@@ -2,6 +2,8 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "PluginProcessor.h"
 
+/** Pedalboard-style editor: a top bar (input, tuner, output), a clickable signal-flow strip,
+    a row of stompboxes before the amp, the amp head and cabinet, and a row of stompboxes after. */
 class EffectSuiteEditor final : public juce::AudioProcessorEditor,
                                 private juce::Timer
 {
@@ -10,7 +12,6 @@ public:
     ~EffectSuiteEditor() override;
 
     void paint (juce::Graphics&) override;
-    void paintOverChildren (juce::Graphics&) override;
     void resized() override;
 
 private:
@@ -18,15 +19,21 @@ private:
     using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
     using ComboAttachment  = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
 
-    class KnobLookAndFeel final : public juce::LookAndFeel_V4
+    enum class ValueStyle { unit, decibels, milliseconds };
+    struct PedalDef;
+
+    //==========================================================================
+    class RigLookAndFeel final : public juce::LookAndFeel_V4
     {
     public:
-        KnobLookAndFeel();
+        RigLookAndFeel();
         void drawRotarySlider (juce::Graphics&, int x, int y, int w, int h, float pos,
                                float startAngle, float endAngle, juce::Slider&) override;
+        void drawLinearSlider (juce::Graphics&, int x, int y, int w, int h, float sliderPos, float minPos,
+                               float maxPos, juce::Slider::SliderStyle, juce::Slider&) override;
         void drawToggleButton (juce::Graphics&, juce::ToggleButton&, bool highlighted, bool down) override;
-        juce::Label* createSliderTextBox (juce::Slider&) override;
         juce::Font getComboBoxFont (juce::ComboBox&) override;
+        juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override;
     };
 
     class Meter final : public juce::Component
@@ -40,8 +47,6 @@ private:
         int holdCounter = 0;
     };
 
-    enum class ValueStyle { unit, decibels, milliseconds };
-
     struct Knob
     {
         juce::Slider slider;
@@ -49,53 +54,162 @@ private:
         std::unique_ptr<SliderAttachment> attachment; // last: destroyed first
     };
 
-    struct Panel
+    /** Round metallic stomp switch. */
+    class FootSwitch final : public juce::Button
     {
-        juce::String title;
-        juce::String onParamId;                        // empty: always active
-        juce::Rectangle<float> bounds;
-        juce::Rectangle<int> content;                  // area below the title
-        std::vector<Knob*> knobs;
-        juce::ComboBox* combo = nullptr;               // optional model selector (not owned)
-        std::unique_ptr<juce::ToggleButton> toggle;
-        std::unique_ptr<ButtonAttachment> toggleAttachment; // after toggle: destroyed first
-        bool active = true;
+    public:
+        FootSwitch() : juce::Button ({}) { setClickingTogglesState (true); }
+        void paintButton (juce::Graphics&, bool highlighted, bool down) override;
     };
 
-    enum PanelIndex { pInput, pGate, pComp, pOverdrive, pDist, pFuzz,
-                      pAmp, pCab, pChorus, pDelay, pReverb, pOutput, numPanels };
+    /** Rocker power switch for the amp and the cabinet. */
+    class PowerSwitch final : public juce::Button
+    {
+    public:
+        PowerSwitch() : juce::Button ({}) { setClickingTogglesState (true); }
+        void paintButton (juce::Graphics&, bool highlighted, bool down) override;
+    };
 
+    /** One pedal: coloured enclosure, controls, name, LED and footswitch. */
+    class Stompbox final : public juce::Component
+    {
+    public:
+        Stompbox (EffectSuiteEditor&, const PedalDef&);
+
+        void paint (juce::Graphics&) override;
+        void paintOverChildren (juce::Graphics&) override;
+        void resized() override;
+
+        juce::Button& getSwitch() noexcept      { return footSwitch; }
+        juce::Colour getColour() const noexcept { return colour; }
+
+        float scale = 1.0f;
+
+    private:
+        void refresh();
+
+        EffectSuiteEditor& editor;
+        juce::String name;
+        juce::Colour colour;
+        bool sliders = false, hasCombo = false, lastOn = false;
+
+        std::vector<std::unique_ptr<Knob>> knobs;
+        juce::ComboBox combo;
+        FootSwitch footSwitch;
+        std::unique_ptr<ComboAttachment> comboAttachment;   // after the components
+        std::unique_ptr<ButtonAttachment> switchAttachment;
+
+        juce::Rectangle<int> controlsArea, nameArea, ledArea;
+    };
+
+    /** Amp head: grille with the model selector, control plate with power switch and six knobs. */
+    class AmpUnit final : public juce::Component
+    {
+    public:
+        explicit AmpUnit (EffectSuiteEditor&);
+
+        void paint (juce::Graphics&) override;
+        void resized() override;
+        juce::Button& getSwitch() noexcept { return power; }
+
+        float scale = 1.0f;
+
+    private:
+        void refresh();
+
+        EffectSuiteEditor& editor;
+        bool lastOn = false;
+        std::vector<std::unique_ptr<Knob>> knobs;
+        juce::ComboBox model;
+        PowerSwitch power;
+        std::unique_ptr<ComboAttachment> modelAttachment;
+        std::unique_ptr<ButtonAttachment> powerAttachment;
+        juce::Rectangle<int> grilleArea, plateArea, lightArea;
+    };
+
+    /** Speaker cabinet: grille, power switch, built-in cabinet selector and user IR loading. */
+    class CabUnit final : public juce::Component
+    {
+    public:
+        explicit CabUnit (EffectSuiteEditor&);
+
+        void paint (juce::Graphics&) override;
+        void resized() override;
+        juce::Button& getSwitch() noexcept { return power; }
+        void updateIrState();
+        const juce::String& getShownIrName() const noexcept { return lastIrName; }
+
+        float scale = 1.0f;
+
+    private:
+        void chooseImpulseResponse();
+
+        EffectSuiteEditor& editor;
+        bool lastOn = false;
+        juce::String lastIrName;
+        juce::ComboBox cabModel;
+        juce::Label cabModelLabel, irName;
+        juce::TextButton loadIr { juce::CharPointer_UTF8 ("Cargar IR\xe2\x80\xa6") }, clearIr { "Quitar" };
+        PowerSwitch power;
+        std::unique_ptr<juce::FileChooser> chooser;
+        std::unique_ptr<ComboAttachment> cabModelAttachment;
+        std::unique_ptr<ButtonAttachment> powerAttachment;
+        juce::Rectangle<int> grilleArea, panelArea, titleArea, lightArea;
+    };
+
+    /** Thin row of chips, one per block in signal order; lit when the block is on, click to toggle. */
+    class FlowStrip final : public juce::Component
+    {
+    public:
+        void addChip (const juce::String& text, juce::Colour, juce::Button& target);
+        void paint (juce::Graphics&) override;
+        void resized() override;
+        void mouseDown (const juce::MouseEvent&) override;
+        void mouseMove (const juce::MouseEvent&) override;
+
+        float scale = 1.0f;
+
+    private:
+        struct Chip
+        {
+            juce::String text;
+            juce::Colour colour;
+            juce::Button* target = nullptr;
+            juce::Rectangle<float> bounds;
+        };
+        int chipAt (juce::Point<float>) const;
+        std::vector<Chip> chips;
+    };
+
+    //==========================================================================
     void timerCallback() override;
-    void addPanel (PanelIndex, const juce::String& title, const juce::String& onParamId);
-    void addKnob (PanelIndex, const juce::String& text, const juce::String& paramId,
-                  ValueStyle = ValueStyle::unit);
-    void setupCombo (juce::ComboBox&, const juce::String& paramId, std::unique_ptr<ComboAttachment>&);
-    void layoutKnob (Knob&, juce::Rectangle<int>);
-    void layoutKnobRow (const std::vector<Knob*>&, size_t first, size_t count, juce::Rectangle<int>);
-    void chooseImpulseResponse();
-    void updateIrLabel();
+    std::unique_ptr<Knob> createKnob (juce::Component& parent, const juce::String& text,
+                                      const juce::String& paramId, ValueStyle, bool vertical = false);
+    void fillCombo (juce::ComboBox&, const juce::String& paramId);
+    static void placeKnob (Knob&, juce::Rectangle<int> cell, int labelHeight, float fontSize, int maxKnobSize);
+    void blockStateChanged();
     void updateTuner();
-    float uiScale() const { return (float) getHeight() / 720.0f; }
+    float uiScale() const { return (float) getHeight() / 900.0f; }
 
     EffectSuiteProcessor& processor;
-    KnobLookAndFeel lnf;
+    RigLookAndFeel lnf;
 
-    // Components
-    std::vector<std::unique_ptr<Knob>> knobs;
-    juce::ComboBox inputMode, ampModel, quality, odModel, distModel, fuzzModel, cabModel;
+    // Top bar
+    std::unique_ptr<Knob> inputGain, outputLevel;
+    juce::ComboBox inputMode, quality;
     juce::ToggleButton tunerMute;
-    juce::TextButton loadIr { juce::CharPointer_UTF8 ("Cargar IR\xe2\x80\xa6") }, clearIr { "Quitar" };
-    juce::Label irName, inputModeLabel, ampModelLabel, qualityLabel, cabModelLabel;
+    juce::Label inputModeLabel, qualityLabel;
     Meter inMeter, outMeter;
-    std::unique_ptr<juce::FileChooser> chooser;
+    std::unique_ptr<ButtonAttachment> tunerMuteA;          // after the components they reference
+    std::unique_ptr<ComboAttachment> inputModeA, qualityA;
 
-    // Attachments (after the components they reference)
-    std::unique_ptr<ButtonAttachment> tunerMuteA;
-    std::unique_ptr<ComboAttachment> inputModeA, ampModelA, qualityA, odModelA, distModelA, fuzzModelA, cabModelA;
+    // The rig. Each unit owns its controls and their attachments.
+    std::vector<std::unique_ptr<Stompbox>> prePedals, postPedals;
+    std::unique_ptr<AmpUnit> amp;
+    std::unique_ptr<CabUnit> cab;
+    std::unique_ptr<FlowStrip> flow;                       // points at the units' switches: destroyed first
 
-    // Each panel owns its bypass toggle and that toggle's attachment; knobs own their attachments
-    std::array<Panel, numPanels> panels;
-    juce::Rectangle<int> topBar, tunerArea;
+    juce::Rectangle<int> topBar, tunerArea, preBoard, ampBoard, postBoard;
 
     // Tuner state
     int timerTick = 0;
@@ -103,7 +217,6 @@ private:
     int tunerMissed = 100;
     float tunerCents = 0.0f;
     juce::String tunerNote = "--";
-    juce::String lastIrName;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EffectSuiteEditor)
 };
