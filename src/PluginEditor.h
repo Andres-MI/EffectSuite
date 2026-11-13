@@ -85,6 +85,7 @@ private:
     juce::Rectangle<int> topBar, tunerArea;
 
     // Tuner state
+    bool audioSeen = false;
     float tunerHz = 0.0f;
     int tunerMissed = 100;
     float tunerCents = 0.0f;

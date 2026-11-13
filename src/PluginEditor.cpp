@@ -151,10 +151,10 @@ EffectSuiteEditor::EffectSuiteEditor (EffectSuiteProcessor& p)
     setupKnob (ampMaster,     "Master",    "ampMaster");
     setupKnob (outputLevel,   "Output",    "outputLevel");
 
-    setupToggle (gateOn,    "Activa", "gateOn",    gateOnA);
-    setupToggle (odOn,      "Activo", "odOn",      odOnA);
-    setupToggle (ampOn,     "Activo", "ampOn",     ampOnA);
-    setupToggle (cabOn,     "Activa", "cabOn",     cabOnA);
+    setupToggle (gateOn,    "On", "gateOn",    gateOnA);
+    setupToggle (odOn,      "On", "odOn",      odOnA);
+    setupToggle (ampOn,     "On", "ampOn",     ampOnA);
+    setupToggle (cabOn,     "On", "cabOn",     cabOnA);
     setupToggle (tunerMute, "Silenciar", "tunerMute", tunerMuteA);
 
     setupCombo (inputMode, "inputMode", inputModeA);
@@ -277,7 +277,8 @@ void EffectSuiteEditor::updateIrLabel()
 
 void EffectSuiteEditor::updateTuner()
 {
-    const float hz = processor.detectPitch();
+    // detectPitch() uses buffers allocated in prepareToPlay; skip until audio has been seen (silence gives no note anyway)
+    const float hz = audioSeen ? processor.detectPitch() : 0.0f;
     if (hz > 20.0f)
     {
         tunerMissed = 0;
@@ -298,8 +299,11 @@ void EffectSuiteEditor::updateTuner()
 
 void EffectSuiteEditor::timerCallback()
 {
-    inMeter.pushLevel (processor.inputPeak.exchange (0.0f));
-    outMeter.pushLevel (processor.outputPeak.exchange (0.0f));
+    const float inPk = processor.inputPeak.exchange (0.0f), outPk = processor.outputPeak.exchange (0.0f);
+    if (inPk > 0.0f || outPk > 0.0f)
+        audioSeen = true;
+    inMeter.pushLevel (inPk);
+    outMeter.pushLevel (outPk);
 
     static int tick = 0;
     if ((++tick % 2) == 0)
@@ -334,7 +338,7 @@ void EffectSuiteEditor::paint (juce::Graphics& g)
     g.setColour (juce::Colour (0xff191c21));
     g.fillRect (topBar);
     g.setColour (accentColour);
-    g.fillRect (topBar.removeFromBottom (2));
+    g.fillRect (topBar.withTop (topBar.getBottom() - 2));
 
     g.setColour (textColour);
     g.setFont (juce::FontOptions (28.0f * scale, juce::Font::bold));
@@ -408,12 +412,14 @@ void EffectSuiteEditor::paintOverChildren (juce::Graphics& g)
 
 void EffectSuiteEditor::layoutKnob (Knob& k, juce::Rectangle<int> area)
 {
-    const int labelH = juce::jmax (12, (int) (area.getHeight() * 0.14f));
+    const int labelH = juce::jlimit (14, 20, (int) (area.getHeight() * 0.13f));
+    const int boxH = juce::jlimit (14, 22, (int) (area.getHeight() * 0.13f));
+    const int groupH = juce::jmin (area.getHeight(), area.getWidth() + labelH + boxH);
+    area = area.withSizeKeepingCentre (area.getWidth(), groupH);
     k.label.setBounds (area.removeFromTop (labelH));
-    const int boxH = juce::jlimit (12, 22, (int) (area.getHeight() * 0.17f));
     k.slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, juce::jmax (40, area.getWidth() - 8), boxH);
     k.slider.setBounds (area);
-    k.label.setFont (juce::FontOptions ((float) juce::jlimit (11, 16, labelH)));
+    k.label.setFont (juce::FontOptions ((float) juce::jlimit (11, 16, labelH - 3)));
 }
 
 void EffectSuiteEditor::resized()
@@ -439,7 +445,7 @@ void EffectSuiteEditor::resized()
     }
 
     area.reduce (pad, pad);
-    const float weights[] = { 1.25f, 1.0f, 1.65f, 3.0f, 1.55f, 1.2f };
+    const float weights[] = { 1.2f, 1.35f, 1.6f, 2.85f, 1.5f, 1.15f };
     float total = 0;
     for (float w : weights) total += w;
     const float gap = (float) pad;
@@ -479,14 +485,14 @@ void EffectSuiteEditor::resized()
     {
         auto r = content (1);
         auto head = panels[1].bounds.toNearestInt().reduced (pad, 0);
-        gateOn.setBounds (head.withHeight (titleH).withTrimmedLeft (head.getWidth() / 2));
+        gateOn.setBounds (head.withHeight (titleH).withTrimmedLeft (head.getWidth() - juce::roundToInt (60 * s)));
         layoutKnob (gateThreshold, r);
     }
     // Overdrive
     {
         auto r = content (2);
         auto head = panels[2].bounds.toNearestInt().reduced (pad, 0);
-        odOn.setBounds (head.withHeight (titleH).withTrimmedLeft (head.getWidth() / 2));
+        odOn.setBounds (head.withHeight (titleH).withTrimmedLeft (head.getWidth() - juce::roundToInt (60 * s)));
         const int w = r.getWidth() / 3;
         layoutKnob (odDrive, r.removeFromLeft (w));
         layoutKnob (odTone, r.removeFromLeft (w));
@@ -496,7 +502,7 @@ void EffectSuiteEditor::resized()
     {
         auto r = content (3);
         auto head = panels[3].bounds.toNearestInt().reduced (pad, 0);
-        ampOn.setBounds (head.withHeight (titleH).withTrimmedLeft (head.getWidth() * 2 / 3));
+        ampOn.setBounds (head.withHeight (titleH).withTrimmedLeft (head.getWidth() - juce::roundToInt (60 * s)));
         auto row = r.removeFromTop (rowH);
         ampModelLabel.setBounds (row.removeFromLeft (juce::roundToInt (56 * s)));
         ampModelLabel.setFont (juce::FontOptions (13.0f * s));
@@ -514,7 +520,7 @@ void EffectSuiteEditor::resized()
     {
         auto r = content (4);
         auto head = panels[4].bounds.toNearestInt().reduced (pad, 0);
-        cabOn.setBounds (head.withHeight (titleH).withTrimmedLeft (head.getWidth() / 2));
+        cabOn.setBounds (head.withHeight (titleH).withTrimmedLeft (head.getWidth() - juce::roundToInt (60 * s)));
         const int bh = juce::roundToInt (34 * s);
         r.removeFromTop (pad);
         loadIr.setBounds (r.removeFromTop (bh));

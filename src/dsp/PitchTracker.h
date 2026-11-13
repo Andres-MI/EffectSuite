@@ -29,6 +29,9 @@ public:
     /** Hilo de audio. */
     void push (const float* data, int numSamples) noexcept
     {
+        if (ring.empty())
+            return;
+
         int w = writeIndex.load (std::memory_order_relaxed);
 
         for (int i = 0; i < numSamples; ++i)
@@ -50,6 +53,9 @@ public:
     /** Hilo de la interfaz. Devuelve la frecuencia en Hz, o 0 si no hay nota clara. */
     float detect() noexcept
     {
+        if (ring.empty())       // todavía no se ha llamado a prepare()
+            return 0.0f;
+
         const int w = writeIndex.load (std::memory_order_acquire);
         double energy = 0.0;
 
