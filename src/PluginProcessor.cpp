@@ -26,10 +26,25 @@ APVTS::ParameterLayout EffectSuiteProcessor::createLayout()
     layout.add (std::make_unique<Float> (id ("gateThreshold"), "Gate Threshold", Range (-90.0f, -20.0f, 0.1f), -65.0f,
                                          juce::AudioParameterFloatAttributes().withLabel ("dB")));
 
+    layout.add (std::make_unique<Bool> (id ("compOn"), "Compressor On", false));
+    knob ("compSustain", "Compressor Sustain", 0.5f);
+    knob ("compAttack", "Compressor Attack", 0.3f);
+    knob ("compLevel", "Compressor Level", 0.5f);
+
     layout.add (std::make_unique<Bool> (id ("odOn"), "Overdrive On", false));
     knob ("odDrive", "Overdrive Drive", 0.5f);
     knob ("odTone", "Overdrive Tone", 0.5f);
     knob ("odLevel", "Overdrive Level", 0.7f);
+
+    layout.add (std::make_unique<Bool> (id ("distOn"), "Distortion On", false));
+    knob ("distGain", "Distortion Gain", 0.5f);
+    knob ("distTone", "Distortion Tone", 0.5f);
+    knob ("distLevel", "Distortion Level", 0.5f);
+
+    layout.add (std::make_unique<Bool> (id ("fuzzOn"), "Fuzz On", false));
+    knob ("fuzzAmount", "Fuzz Amount", 0.6f);
+    knob ("fuzzTone", "Fuzz Tone", 0.5f);
+    knob ("fuzzLevel", "Fuzz Level", 0.5f);
 
     juce::StringArray models;
     for (auto* v : fx::voicings::all)
@@ -45,6 +60,21 @@ APVTS::ParameterLayout EffectSuiteProcessor::createLayout()
     knob ("ampMaster", "Amp Master", 0.5f);
 
     layout.add (std::make_unique<Bool> (id ("cabOn"), "Cabinet On", true));
+    layout.add (std::make_unique<Bool> (id ("chorusOn"), "Chorus On", false));
+    knob ("chorusRate", "Chorus Rate", 0.3f);
+    knob ("chorusDepth", "Chorus Depth", 0.5f);
+    knob ("chorusMix", "Chorus Mix", 0.6f);
+
+    layout.add (std::make_unique<Bool> (id ("delayOn"), "Delay On", false));
+    layout.add (std::make_unique<Float> (id ("delayTime"), "Delay Time", Range (20.0f, 1500.0f, 1.0f, 0.5f), 380.0f,
+                                         juce::AudioParameterFloatAttributes().withLabel ("ms")));
+    knob ("delayFeedback", "Delay Feedback", 0.35f);
+    knob ("delayMix", "Delay Mix", 0.3f);
+
+    layout.add (std::make_unique<Bool> (id ("reverbOn"), "Reverb On", false));
+    knob ("reverbSize", "Reverb Size", 0.5f);
+    knob ("reverbMix", "Reverb Mix", 0.25f);
+
     layout.add (std::make_unique<Float> (id ("outputLevel"), "Output Level", Range (-24.0f, 12.0f, 0.1f), 0.0f,
                                          juce::AudioParameterFloatAttributes().withLabel ("dB")));
     layout.add (std::make_unique<Choice> (id ("quality"), "Quality",
@@ -63,10 +93,17 @@ EffectSuiteProcessor::EffectSuiteProcessor()
     auto ref = [this] (const char* name) { return apvts.getRawParameterValue (name); };
 
     params = { ref ("inputGain"), ref ("inputMode"), ref ("gateOn"), ref ("gateThreshold"),
+               ref ("compOn"), ref ("compSustain"), ref ("compAttack"), ref ("compLevel"),
                ref ("odOn"), ref ("odDrive"), ref ("odTone"), ref ("odLevel"),
+               ref ("distOn"), ref ("distGain"), ref ("distTone"), ref ("distLevel"),
+               ref ("fuzzOn"), ref ("fuzzAmount"), ref ("fuzzTone"), ref ("fuzzLevel"),
                ref ("ampOn"), ref ("ampModel"), ref ("ampGain"), ref ("ampBass"), ref ("ampMid"),
                ref ("ampTreble"), ref ("ampPresence"), ref ("ampMaster"),
-               ref ("cabOn"), ref ("outputLevel"), ref ("quality"), ref ("tunerMute") };
+               ref ("cabOn"),
+               ref ("chorusOn"), ref ("chorusRate"), ref ("chorusDepth"), ref ("chorusMix"),
+               ref ("delayOn"), ref ("delayTime"), ref ("delayFeedback"), ref ("delayMix"),
+               ref ("reverbOn"), ref ("reverbSize"), ref ("reverbMix"),
+               ref ("outputLevel"), ref ("quality"), ref ("tunerMute") };
 }
 
 EffectSuiteProcessor::~EffectSuiteProcessor()
@@ -89,7 +126,7 @@ bool EffectSuiteProcessor::isBusesLayoutSupported (const BusesLayout& layouts) c
 void EffectSuiteProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     maxBlock = juce::jmax (16, samplesPerBlock);
-    mono.setSize (1, maxBlock, false, false, true);
+    work.setSize (3, maxBlock, false, false, true);
     chain.prepare (sampleRate, maxBlock);
     pitchTracker.prepare (sampleRate);
 
@@ -104,6 +141,29 @@ fx::ChainParams EffectSuiteProcessor::readParams() const
     p.inputGainDb     = params.inputGain->load();
     p.gateOn          = params.gateOn->load() > 0.5f;
     p.gateThresholdDb = params.gateThreshold->load();
+    p.compOn          = params.compOn->load() > 0.5f;
+    p.compSustain     = params.compSustain->load();
+    p.compAttack      = params.compAttack->load();
+    p.compLevel       = params.compLevel->load();
+    p.distOn          = params.distOn->load() > 0.5f;
+    p.distGain        = params.distGain->load();
+    p.distTone        = params.distTone->load();
+    p.distLevel       = params.distLevel->load();
+    p.fuzzOn          = params.fuzzOn->load() > 0.5f;
+    p.fuzzAmount      = params.fuzzAmount->load();
+    p.fuzzTone        = params.fuzzTone->load();
+    p.fuzzLevel       = params.fuzzLevel->load();
+    p.chorusOn        = params.chorusOn->load() > 0.5f;
+    p.chorusRate      = params.chorusRate->load();
+    p.chorusDepth     = params.chorusDepth->load();
+    p.chorusMix       = params.chorusMix->load();
+    p.delayOn         = params.delayOn->load() > 0.5f;
+    p.delayTimeMs     = params.delayTime->load();
+    p.delayFeedback   = params.delayFeedback->load();
+    p.delayMix        = params.delayMix->load();
+    p.reverbOn        = params.reverbOn->load() > 0.5f;
+    p.reverbSize      = params.reverbSize->load();
+    p.reverbMix       = params.reverbMix->load();
     p.odOn            = params.odOn->load() > 0.5f;
     p.odDrive         = params.odDrive->load();
     p.odTone          = params.odTone->load();
@@ -140,7 +200,9 @@ void EffectSuiteProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     if (p.quality != latencyQuality.exchange (p.quality))
         triggerAsyncUpdate();
 
-    float* m = mono.getWritePointer (0);
+    float* m = work.getWritePointer (0);
+    float* outL = work.getWritePointer (1);
+    float* outR = work.getWritePointer (2);
     float inPeak = 0.0f, outPeak = 0.0f;
 
     for (int start = 0; start < numSamples; start += maxBlock)
@@ -160,16 +222,32 @@ void EffectSuiteProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
                              -juce::FloatVectorOperations::findMinimum (m, n));
         pitchTracker.push (m, n);
 
-        chain.process (m, n, p);
+        chain.process (m, outL, outR, n, p);
 
         if (mute)
-            juce::FloatVectorOperations::clear (m, n);
+        {
+            juce::FloatVectorOperations::clear (outL, n);
+            juce::FloatVectorOperations::clear (outR, n);
+        }
 
-        outPeak = juce::jmax (outPeak, juce::FloatVectorOperations::findMaximum (m, n),
-                              -juce::FloatVectorOperations::findMinimum (m, n));
+        for (const float* out : { outL, outR })
+            outPeak = juce::jmax (outPeak, juce::FloatVectorOperations::findMaximum (out, n),
+                                  -juce::FloatVectorOperations::findMinimum (out, n));
 
-        for (int ch = 0; ch < numOut; ++ch)
-            buffer.copyFrom (ch, start, m, n);
+        if (numOut == 1)
+        {
+            float* dest = buffer.getWritePointer (0, start);
+            for (int i = 0; i < n; ++i)
+                dest[i] = 0.5f * (outL[i] + outR[i]);
+        }
+        else
+        {
+            buffer.copyFrom (0, start, outL, n);
+            buffer.copyFrom (1, start, outR, n);
+
+            for (int ch = 2; ch < numOut; ++ch)
+                buffer.clear (ch, start, n);
+        }
     }
 
     if (inPeak > inputPeak.load (std::memory_order_relaxed))   inputPeak.store (inPeak, std::memory_order_relaxed);

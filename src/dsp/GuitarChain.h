@@ -1,8 +1,12 @@
 #pragma once
 #include <juce_dsp/juce_dsp.h>
 #include "Amp.h"
+#include "Compressor.h"
+#include "Distortion.h"
+#include "Fuzz.h"
 #include "NoiseGate.h"
 #include "Overdrive.h"
+#include "TimeEffects.h"
 
 namespace fx
 {
@@ -11,20 +15,35 @@ struct ChainParams
     float inputGainDb = 0.0f;
     bool  gateOn = true;
     float gateThresholdDb = -60.0f;
+    bool  compOn = false;
+    float compSustain = 0.5f, compAttack = 0.3f, compLevel = 0.5f;
     bool  odOn = false;
     float odDrive = 0.5f, odTone = 0.5f, odLevel = 0.7f;
+    bool  distOn = false;
+    float distGain = 0.5f, distTone = 0.5f, distLevel = 0.5f;
+    bool  fuzzOn = false;
+    float fuzzAmount = 0.6f, fuzzTone = 0.5f, fuzzLevel = 0.5f;
     bool  ampOn = true;
     int   ampModel = 0;
     float ampGain = 0.5f, ampBass = 0.5f, ampMid = 0.5f, ampTreble = 0.5f, ampPresence = 0.5f, ampMaster = 0.5f;
     bool  cabOn = true;
+    bool  chorusOn = false;
+    float chorusRate = 0.3f, chorusDepth = 0.5f, chorusMix = 0.6f;
+    bool  delayOn = false;
+    float delayTimeMs = 380.0f, delayFeedback = 0.35f, delayMix = 0.3f;
+    bool  reverbOn = false;
+    float reverbSize = 0.5f, reverbMix = 0.25f;
     float outputDb = 0.0f;
     int   quality = 1;          // 0 = 2x, 1 = 4x, 2 = 8x
 };
 
-/** Cadena completa en mono: puerta -> overdrive -> amplificador -> pantalla.
+/** Cadena completa, entrada mono y salida estéreo:
 
-    El overdrive y el amplificador se procesan sobremuestreados para que la
-    distorsión no genere aliasing. Nada de lo que hace process() reserva memoria.
+    puerta -> compresor -> overdrive -> distorsión -> fuzz -> amplificador -> pantalla
+           -> chorus -> delay -> reverb
+
+    Los pedales de saturación y el amplificador se procesan sobremuestreados para
+    que la distorsión no genere aliasing. Nada de lo que hace process() reserva memoria.
 */
 class GuitarChain
 {
@@ -49,6 +68,12 @@ public:
         }
 
         gate.prepare (fs);
+        compressor.prepare (fs);
+        chorus.prepare (fs);
+        delay.prepare (fs);
+        reverb.setSampleRate (fs);
+        reverb.reset();
+        reverbSize = reverbMix = -1.0f;
         inputGain.reset (fs, 0.02);
         outputGain.reset (fs, 0.02);
 
@@ -90,8 +115,11 @@ public:
     void clearImpulseResponse() noexcept    { userIrLoaded.store (false); }
     bool hasImpulseResponse() const noexcept { return userIrLoaded.load(); }
 
-    /** Procesa numSamples (<= maxBlockSize de prepare) en el sitio. */
-    void process (float* data, int numSamples, const ChainParams& p) noexcept
+    /** Procesa numSamples (<= maxBlockSize de prepare).
+
+        data es la entrada mono y se usa como búfer de trabajo; la salida queda en left y right.
+    */
+    void process (float* data, float* left, float* right, int numSamples, const ChainParams& p) noexcept
     {
         jassert (numSamples <= maxBlock);
         const int quality = juce::jlimit (0, 2, p.quality);
@@ -102,7 +130,28 @@ public:
             const double osRate = fs * (double) (2 << quality);
             oversamplers[(size_t) quality]->reset();
             overdrive.prepare (osRate);
+            distortion.prepare (osRate);
+            fuzz.prepare (osRate);
             amp.prepare (osRate);
+        }
+
+        compressor.setControls (p.compSustain, p.compAttack, p.compLevel);
+        distortion.setControls (p.distGain, p.distTone, p.distLevel);
+        fuzz.setControls (p.fuzzAmount, p.fuzzTone, p.fuzzLevel);
+        chorus.setControls (p.chorusRate, p.chorusDepth, p.chorusMix);
+        delay.setControls (p.delayTimeMs, p.delayFeedback, p.delayMix);
+
+        if (p.reverbSize != reverbSize || p.reverbMix != reverbMix)
+        {
+            reverbSize = p.reverbSize;
+            reverbMix = p.reverbMix;
+            juce::Reverb::Parameters rp;
+            rp.roomSize = 0.3f + 0.68f * reverbSize;
+            rp.damping = 0.5f;
+            rp.wetLevel = 0.33f * reverbMix;
+            rp.dryLevel = 0.5f;          // ganancia unidad en juce::Reverb
+            rp.width = 1.0f;
+            reverb.setParameters (rp);
         }
 
         overdrive.setControls (p.odDrive, p.odTone, p.odLevel);
@@ -118,13 +167,19 @@ public:
             inputGain.setCurrentAndTargetValue (inputGain.getTargetValue());
             outputGain.setCurrentAndTargetValue (outputGain.getTargetValue());
             overdrive.reset();
+            distortion.reset();
+            fuzz.reset();
             amp.reset();
+            chorus.reset();
+            delay.reset();
         }
 
         for (int i = 0; i < numSamples; ++i)
         {
-            const float x = data[i] * inputGain.getNextValue();
-            data[i] = p.gateOn ? gate.process (x) : x;
+            float x = data[i] * inputGain.getNextValue();
+            if (p.gateOn) x = gate.process (x);
+            if (p.compOn) x = compressor.process (x);
+            data[i] = x;
         }
 
         juce::dsp::AudioBlock<float> block (&data, 1, (size_t) numSamples);
@@ -133,12 +188,18 @@ public:
         float* d = osBlock.getChannelPointer (0);
         const int osSamples = (int) osBlock.getNumSamples();
 
-        if (p.odOn && p.ampOn)
-            for (int i = 0; i < osSamples; ++i) d[i] = (float) amp.process (overdrive.process (d[i]));
-        else if (p.odOn)
-            for (int i = 0; i < osSamples; ++i) d[i] = (float) overdrive.process (d[i]);
-        else if (p.ampOn)
-            for (int i = 0; i < osSamples; ++i) d[i] = (float) amp.process (d[i]);
+        if (p.odOn || p.distOn || p.fuzzOn || p.ampOn)
+        {
+            for (int i = 0; i < osSamples; ++i)
+            {
+                double x = d[i];
+                if (p.odOn)   x = overdrive.process (x);
+                if (p.distOn) x = distortion.process (x);
+                if (p.fuzzOn) x = fuzz.process (x);
+                if (p.ampOn)  x = amp.process (x);
+                d[i] = (float) x;
+            }
+        }
 
         os.processSamplesDown (block);
 
@@ -153,8 +214,36 @@ public:
                     f.process (context);
         }
 
+        if (p.chorusOn)
+        {
+            for (int i = 0; i < numSamples; ++i)
+                chorus.process (data[i], left[i], right[i]);
+        }
+        else
+        {
+            for (int i = 0; i < numSamples; ++i)
+                left[i] = right[i] = data[i];
+        }
+
+        if (p.delayOn)
+        {
+            for (int i = 0; i < numSamples; ++i)
+            {
+                const float wet = delay.process (0.5f * (left[i] + right[i]));
+                left[i] += wet;
+                right[i] += wet;
+            }
+        }
+
+        if (p.reverbOn)
+            reverb.processStereo (left, right, numSamples);
+
         for (int i = 0; i < numSamples; ++i)
-            data[i] *= outputGain.getNextValue();
+        {
+            const float g = outputGain.getNextValue();
+            left[i] *= g;
+            right[i] *= g;
+        }
     }
 
 private:
@@ -164,8 +253,15 @@ private:
 
     std::array<std::unique_ptr<juce::dsp::Oversampling<float>>, 3> oversamplers;
     NoiseGate gate;
+    Compressor compressor;
     Overdrive overdrive;
+    Distortion distortion;
+    Fuzz fuzz;
     Amp amp;
+    Chorus chorus;
+    Delay delay;
+    juce::Reverb reverb;
+    float reverbSize = -1.0f, reverbMix = -1.0f;
     juce::dsp::Convolution convolution;
     std::array<juce::dsp::IIR::Filter<float>, 6> cabFilters;
     std::atomic<bool> userIrLoaded { false };

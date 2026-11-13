@@ -21,7 +21,7 @@ public:
     const juce::String getName() const override { return "EffectSuite"; }
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
-    double getTailLengthSeconds() const override { return 0.5; }
+    double getTailLengthSeconds() const override { return 6.0; }
 
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
@@ -56,7 +56,7 @@ private:
 
     fx::GuitarChain chain;
     fx::PitchTracker pitchTracker;
-    juce::AudioBuffer<float> mono;
+    juce::AudioBuffer<float> work;      // canal 0 = entrada mono, 1 y 2 = salida izquierda y derecha
     int maxBlock = 0;
     std::atomic<int> latencyQuality { -1 };
     juce::File irFile;
@@ -64,9 +64,16 @@ private:
     struct ParamRefs
     {
         std::atomic<float> *inputGain, *inputMode, *gateOn, *gateThreshold,
+                           *compOn, *compSustain, *compAttack, *compLevel,
                            *odOn, *odDrive, *odTone, *odLevel,
+                           *distOn, *distGain, *distTone, *distLevel,
+                           *fuzzOn, *fuzzAmount, *fuzzTone, *fuzzLevel,
                            *ampOn, *ampModel, *ampGain, *ampBass, *ampMid, *ampTreble, *ampPresence, *ampMaster,
-                           *cabOn, *outputLevel, *quality, *tunerMute;
+                           *cabOn,
+                           *chorusOn, *chorusRate, *chorusDepth, *chorusMix,
+                           *delayOn, *delayTime, *delayFeedback, *delayMix,
+                           *reverbOn, *reverbSize, *reverbMix,
+                           *outputLevel, *quality, *tunerMute;
     } params {};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EffectSuiteProcessor)

@@ -10,9 +10,17 @@ Funciona como aplicación independiente y como plugin (VST3 en Windows y Mac, AU
 |---|---|
 | Afinador cromático | Detección de tono YIN, error medido < 0,2 cents |
 | Puerta de ruido | Con histéresis y retención |
+| Compresor | Detector de pico, relación 4:1 con codo suave |
 | Overdrive | Circuito de diodos en la realimentación de un operacional, resuelto por Newton-Raphson en cada muestra |
+| Distorsión | Circuito de recorte duro: operacional de alta ganancia y diodos a masa, resuelto igual |
+| Fuzz | Dos etapas de saturación asimétrica (modelo de comportamiento, no de circuito) |
 | Amplificador | Tres modelos: Clean American, British Crunch, High Gain. Previo de varias etapas de válvula, control de tonos calculado desde el circuito real y etapa de potencia con sag |
 | Pantalla | Carga de respuestas a impulso (WAV/AIFF) sin latencia, más una pantalla integrada |
+| Chorus | Estéreo, con retardo modulado en cuadratura |
+| Delay | Hasta 1,5 s, con realimentación filtrada |
+| Reverb | Estéreo, algoritmo Freeverb |
+
+Orden de la señal: puerta → compresor → overdrive → distorsión → fuzz → amplificador → pantalla → chorus → delay → reverb.
 
 El procesado añade unas 4 muestras de latencia (0,1 ms). El resto de la latencia depende del driver y del tamaño de búfer de la interfaz de audio.
 
@@ -60,7 +68,7 @@ Los resultados quedan en `build/EffectSuite_artefacts/Release/`.
 
 ## Pruebas
 
-`EffectSuiteMeasure` comprueba el motor de audio sin tarjeta de sonido: respuesta del control de tonos frente al circuito analógico, distorsión, aliasing, latencia, coste de CPU, precisión del afinador y estabilidad.
+`EffectSuiteMeasure` comprueba el motor de audio sin tarjeta de sonido: respuesta del control de tonos frente al circuito analógico, distorsión, aliasing, latencia, coste de CPU, precisión del afinador, comportamiento de cada pedal y estabilidad.
 
 ```bash
 ./build/EffectSuiteMeasure_artefacts/Release/EffectSuiteMeasure
@@ -70,7 +78,7 @@ Con `--render <carpeta>` escribe además archivos WAV de demostración con una g
 
 ## Estructura
 
-- `src/dsp/`: motor de audio (overdrive, amplificador, control de tonos, puerta, afinador y cadena completa).
+- `src/dsp/`: motor de audio (pedales, amplificador, control de tonos, afinador y cadena completa).
 - `src/PluginProcessor.*`: parámetros, estado y conexión con el host.
 - `src/PluginEditor.*`: interfaz gráfica.
 - `tests/Measure.cpp`: pruebas de medida.
