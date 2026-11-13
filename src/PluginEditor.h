@@ -25,6 +25,8 @@ private:
         void drawRotarySlider (juce::Graphics&, int x, int y, int w, int h, float pos,
                                float startAngle, float endAngle, juce::Slider&) override;
         void drawToggleButton (juce::Graphics&, juce::ToggleButton&, bool highlighted, bool down) override;
+        juce::Label* createSliderTextBox (juce::Slider&) override;
+        juce::Font getComboBoxFont (juce::ComboBox&) override;
     };
 
     class Meter final : public juce::Component
@@ -38,6 +40,8 @@ private:
         int holdCounter = 0;
     };
 
+    enum class ValueStyle { unit, decibels, milliseconds };
+
     struct Knob
     {
         juce::Slider slider;
@@ -48,44 +52,53 @@ private:
     struct Panel
     {
         juce::String title;
+        juce::String onParamId;                        // empty: always active
         juce::Rectangle<float> bounds;
-        juce::ToggleButton* toggle = nullptr;
+        juce::Rectangle<int> content;                  // area below the title
+        std::vector<Knob*> knobs;
+        juce::ComboBox* combo = nullptr;               // optional model selector (not owned)
+        std::unique_ptr<juce::ToggleButton> toggle;
+        std::unique_ptr<ButtonAttachment> toggleAttachment; // after toggle: destroyed first
         bool active = true;
     };
 
+    enum PanelIndex { pInput, pGate, pComp, pOverdrive, pDist, pFuzz,
+                      pAmp, pCab, pChorus, pDelay, pReverb, pOutput, numPanels };
+
     void timerCallback() override;
-    void setupKnob (Knob&, const juce::String& text, const juce::String& paramId);
-    void setupToggle (juce::ToggleButton&, const juce::String& text, const juce::String& paramId,
-                      std::unique_ptr<ButtonAttachment>&);
+    void addPanel (PanelIndex, const juce::String& title, const juce::String& onParamId);
+    void addKnob (PanelIndex, const juce::String& text, const juce::String& paramId,
+                  ValueStyle = ValueStyle::unit);
     void setupCombo (juce::ComboBox&, const juce::String& paramId, std::unique_ptr<ComboAttachment>&);
     void layoutKnob (Knob&, juce::Rectangle<int>);
+    void layoutKnobRow (const std::vector<Knob*>&, size_t first, size_t count, juce::Rectangle<int>);
     void chooseImpulseResponse();
     void updateIrLabel();
-    bool isParamOn (const char* id) const;
     void updateTuner();
+    float uiScale() const { return (float) getHeight() / 720.0f; }
 
     EffectSuiteProcessor& processor;
     KnobLookAndFeel lnf;
 
     // Components
-    Knob inputGain, gateThreshold, odDrive, odTone, odLevel,
-         ampGain, ampBass, ampMid, ampTreble, ampPresence, ampMaster, outputLevel;
-    juce::ComboBox inputMode, ampModel, quality;
-    juce::ToggleButton gateOn, odOn, ampOn, cabOn, tunerMute;
+    std::vector<std::unique_ptr<Knob>> knobs;
+    juce::ComboBox inputMode, ampModel, quality, odModel, distModel, fuzzModel, cabModel;
+    juce::ToggleButton tunerMute;
     juce::TextButton loadIr { juce::CharPointer_UTF8 ("Cargar IR\xe2\x80\xa6") }, clearIr { "Quitar" };
-    juce::Label irName, inputModeLabel, ampModelLabel, qualityLabel;
+    juce::Label irName, inputModeLabel, ampModelLabel, qualityLabel, cabModelLabel;
     Meter inMeter, outMeter;
     std::unique_ptr<juce::FileChooser> chooser;
 
     // Attachments (after the components they reference)
-    std::unique_ptr<ButtonAttachment> gateOnA, odOnA, ampOnA, cabOnA, tunerMuteA;
-    std::unique_ptr<ComboAttachment> inputModeA, ampModelA, qualityA;
+    std::unique_ptr<ButtonAttachment> tunerMuteA;
+    std::unique_ptr<ComboAttachment> inputModeA, ampModelA, qualityA, odModelA, distModelA, fuzzModelA, cabModelA;
 
-    std::array<Panel, 6> panels;
+    // Each panel owns its bypass toggle and that toggle's attachment; knobs own their attachments
+    std::array<Panel, numPanels> panels;
     juce::Rectangle<int> topBar, tunerArea;
 
     // Tuner state
-    bool audioSeen = false;
+    int timerTick = 0;
     float tunerHz = 0.0f;
     int tunerMissed = 100;
     float tunerCents = 0.0f;

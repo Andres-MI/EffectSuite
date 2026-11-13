@@ -68,7 +68,7 @@ void EffectSuiteEditor::KnobLookAndFeel::drawToggleButton (juce::Graphics& g, ju
                                                            bool highlighted, bool)
 {
     auto r = b.getLocalBounds().toFloat();
-    const float d = juce::jmin (r.getHeight() * 0.6f, 22.0f);
+    const float d = juce::jmin (r.getHeight() * 0.6f, r.getWidth() * 0.28f, 22.0f);
     auto sw = juce::Rectangle<float> (d * 1.8f, d).withCentre ({ r.getX() + d * 0.9f + 2.0f, r.getCentreY() });
     const bool on = b.getToggleState();
     g.setColour (on ? accentColour : juce::Colour (0xff343942));
@@ -78,8 +78,24 @@ void EffectSuiteEditor::KnobLookAndFeel::drawToggleButton (juce::Graphics& g, ju
     g.fillEllipse (kx - d * 0.38f, sw.getCentreY() - d * 0.38f, d * 0.76f, d * 0.76f);
 
     g.setColour (textColour);
-    g.setFont (juce::FontOptions (juce::jlimit (11.0f, 18.0f, r.getHeight() * 0.5f)));
-    g.drawText (b.getButtonText(), r.withTrimmedLeft (sw.getRight() + 6.0f), juce::Justification::centredLeft, true);
+    g.setFont (juce::FontOptions (juce::jlimit (9.0f, 18.0f, d * 0.8f)));
+    g.drawFittedText (b.getButtonText(), r.withLeft (sw.getRight() + d * 0.3f).toNearestInt(),
+                      juce::Justification::centredLeft, 1, 0.7f);
+}
+
+juce::Font EffectSuiteEditor::KnobLookAndFeel::getComboBoxFont (juce::ComboBox& box)
+{
+    // Scales with the box so long model names still fit at the minimum editor size
+    return juce::FontOptions (juce::jmin (15.0f, (float) box.getHeight() * 0.6f));
+}
+
+juce::Label* EffectSuiteEditor::KnobLookAndFeel::createSliderTextBox (juce::Slider& s)
+{
+    auto* l = juce::LookAndFeel_V4::createSliderTextBox (s);
+    // Value text follows the text box height so it scales with the editor
+    l->setFont (juce::FontOptions ((float) s.getTextBoxHeight() * 0.75f));
+    l->setMinimumHorizontalScale (0.7f);
+    return l;
 }
 
 //==============================================================================
@@ -138,28 +154,76 @@ EffectSuiteEditor::EffectSuiteEditor (EffectSuiteProcessor& p)
 {
     setLookAndFeel (&lnf);
 
-    setupKnob (inputGain,     "Gain",      "inputGain");
-    setupKnob (gateThreshold, "Threshold", "gateThreshold");
-    setupKnob (odDrive,       "Drive",     "odDrive");
-    setupKnob (odTone,        "Tone",      "odTone");
-    setupKnob (odLevel,       "Level",     "odLevel");
-    setupKnob (ampGain,       "Gain",      "ampGain");
-    setupKnob (ampBass,       "Bass",      "ampBass");
-    setupKnob (ampMid,        "Mid",       "ampMid");
-    setupKnob (ampTreble,     "Treble",    "ampTreble");
-    setupKnob (ampPresence,   "Presence",  "ampPresence");
-    setupKnob (ampMaster,     "Master",    "ampMaster");
-    setupKnob (outputLevel,   "Output",    "outputLevel");
+    const auto dB = ValueStyle::decibels;
 
-    setupToggle (gateOn,    "On", "gateOn",    gateOnA);
-    setupToggle (odOn,      "On", "odOn",      odOnA);
-    setupToggle (ampOn,     "On", "ampOn",     ampOnA);
-    setupToggle (cabOn,     "On", "cabOn",     cabOnA);
-    setupToggle (tunerMute, "Silenciar", "tunerMute", tunerMuteA);
+    addPanel (pInput, "Entrada", {});
+    addKnob (pInput, "Gain", "inputGain", dB);
+
+    addPanel (pGate, "Puerta", "gateOn");
+    addKnob (pGate, "Threshold", "gateThreshold", dB);
+
+    addPanel (pComp, "Compresor", "compOn");
+    addKnob (pComp, "Sustain", "compSustain");
+    addKnob (pComp, "Attack", "compAttack");
+    addKnob (pComp, "Level", "compLevel");
+
+    addPanel (pOverdrive, "Overdrive", "odOn");
+    addKnob (pOverdrive, "Drive", "odDrive");
+    addKnob (pOverdrive, "Tone", "odTone");
+    addKnob (pOverdrive, "Level", "odLevel");
+
+    // Already upper case: String::toUpperCase() leaves the accented letter alone
+    addPanel (pDist, juce::CharPointer_UTF8 ("DISTORSI\xc3\x93N"), "distOn");
+    addKnob (pDist, "Gain", "distGain");
+    addKnob (pDist, "Tone", "distTone");
+    addKnob (pDist, "Level", "distLevel");
+
+    addPanel (pFuzz, "Fuzz", "fuzzOn");
+    addKnob (pFuzz, "Fuzz", "fuzzAmount");
+    addKnob (pFuzz, "Tone", "fuzzTone");
+    addKnob (pFuzz, "Level", "fuzzLevel");
+
+    addPanel (pAmp, "Amplificador", "ampOn");
+    addKnob (pAmp, "Gain", "ampGain");
+    addKnob (pAmp, "Bass", "ampBass");
+    addKnob (pAmp, "Mid", "ampMid");
+    addKnob (pAmp, "Treble", "ampTreble");
+    addKnob (pAmp, "Presence", "ampPresence");
+    addKnob (pAmp, "Master", "ampMaster");
+
+    addPanel (pCab, "Pantalla", "cabOn");
+
+    addPanel (pChorus, "Chorus", "chorusOn");
+    addKnob (pChorus, "Rate", "chorusRate");
+    addKnob (pChorus, "Depth", "chorusDepth");
+    addKnob (pChorus, "Mix", "chorusMix");
+
+    addPanel (pDelay, "Delay", "delayOn");
+    addKnob (pDelay, "Time", "delayTime", ValueStyle::milliseconds);
+    addKnob (pDelay, "Feedback", "delayFeedback");
+    addKnob (pDelay, "Mix", "delayMix");
+
+    addPanel (pReverb, "Reverb", "reverbOn");
+    addKnob (pReverb, "Size", "reverbSize");
+    addKnob (pReverb, "Mix", "reverbMix");
+
+    addPanel (pOutput, "Salida", {});
+    addKnob (pOutput, "Output", "outputLevel", dB);
+
+    tunerMute.setButtonText ("Silenciar");
+    addAndMakeVisible (tunerMute);
+    tunerMuteA = std::make_unique<ButtonAttachment> (processor.apvts, "tunerMute", tunerMute);
 
     setupCombo (inputMode, "inputMode", inputModeA);
     setupCombo (ampModel,  "ampModel",  ampModelA);
     setupCombo (quality,   "quality",   qualityA);
+    setupCombo (odModel,   "odModel",   odModelA);
+    setupCombo (distModel, "distModel", distModelA);
+    setupCombo (fuzzModel, "fuzzModel", fuzzModelA);
+    setupCombo (cabModel,  "cabModel",  cabModelA);
+    panels[pOverdrive].combo = &odModel;
+    panels[pDist].combo = &distModel;
+    panels[pFuzz].combo = &fuzzModel;
 
     auto setupSmallLabel = [this] (juce::Label& l, const juce::String& t)
     {
@@ -171,6 +235,7 @@ EffectSuiteEditor::EffectSuiteEditor (EffectSuiteProcessor& p)
     setupSmallLabel (inputModeLabel, "Canal");
     setupSmallLabel (ampModelLabel, "Modelo");
     setupSmallLabel (qualityLabel, "Calidad");
+    setupSmallLabel (cabModelLabel, "Integrada");
 
     addAndMakeVisible (loadIr);
     addAndMakeVisible (clearIr);
@@ -186,18 +251,10 @@ EffectSuiteEditor::EffectSuiteEditor (EffectSuiteProcessor& p)
     addAndMakeVisible (inMeter);
     addAndMakeVisible (outMeter);
 
-    const char* titles[] = { "Entrada", "Puerta", "Overdrive", "Amplificador", "Pantalla", "Salida" };
-    juce::ToggleButton* toggles[] = { nullptr, &gateOn, &odOn, &ampOn, &cabOn, nullptr };
-    for (size_t i = 0; i < panels.size(); ++i)
-    {
-        panels[i].title = titles[i];
-        panels[i].toggle = toggles[i];
-    }
-
     setResizable (true, true);
-    setResizeLimits (770, 294, 1650, 630);
-    getConstrainer()->setFixedAspectRatio (1100.0 / 420.0);
-    setSize (1100, 420);
+    setResizeLimits (840, 504, 1800, 1080);
+    getConstrainer()->setFixedAspectRatio (1200.0 / 720.0);
+    setSize (1200, 720);
 
     startTimerHz (30);
 }
@@ -208,32 +265,60 @@ EffectSuiteEditor::~EffectSuiteEditor()
     setLookAndFeel (nullptr);
 }
 
-void EffectSuiteEditor::setupKnob (Knob& k, const juce::String& text, const juce::String& paramId)
+void EffectSuiteEditor::addPanel (PanelIndex index, const juce::String& title, const juce::String& onParamId)
 {
+    auto& panel = panels[(size_t) index];
+    panel.title = title;
+    panel.onParamId = onParamId;
+
+    if (onParamId.isNotEmpty())
+    {
+        panel.toggle = std::make_unique<juce::ToggleButton> ("On");
+        addAndMakeVisible (*panel.toggle);
+        panel.toggleAttachment = std::make_unique<ButtonAttachment> (processor.apvts, onParamId, *panel.toggle);
+        panel.active = panel.toggle->getToggleState();
+    }
+}
+
+void EffectSuiteEditor::addKnob (PanelIndex index, const juce::String& text, const juce::String& paramId,
+                                 ValueStyle style)
+{
+    auto& k = *knobs.emplace_back (std::make_unique<Knob>());
+    panels[(size_t) index].knobs.push_back (&k);
+
     k.slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
     k.slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 60, 16);
     k.slider.setRotaryParameters (juce::degreesToRadians (225.0f), juce::degreesToRadians (495.0f), true);
-    k.slider.setDoubleClickReturnValue (true, 0.0);
     addAndMakeVisible (k.slider);
 
     k.label.setText (text, juce::dontSendNotification);
     k.label.setJustificationType (juce::Justification::centred);
     k.label.setColour (juce::Label::textColourId, dimTextColour);
+    k.label.setMinimumHorizontalScale (0.7f);
     addAndMakeVisible (k.label);
 
     k.attachment = std::make_unique<SliderAttachment> (processor.apvts, paramId, k.slider);
+
+    // The attachment installs the parameter's own text conversion; replace it with the display format
+    k.slider.textFromValueFunction = [style] (double v) -> juce::String
+    {
+        switch (style)
+        {
+            case ValueStyle::decibels:     return juce::String (v, 1) + " dB";
+            case ValueStyle::milliseconds: return juce::String (juce::roundToInt (v)) + " ms";
+            case ValueStyle::unit:         break;
+        }
+        return juce::String (v, 2);
+    };
+    k.slider.valueFromTextFunction = [] (const juce::String& t)
+    {
+        return t.retainCharacters ("0123456789.,-").replaceCharacter (',', '.').getDoubleValue();
+    };
+    k.slider.updateText();
+
     // Double-click resets to the parameter default
     if (auto* param = processor.apvts.getParameter (paramId))
         k.slider.setDoubleClickReturnValue (true, param->convertFrom0to1 (param->getDefaultValue()));
-}
-
-void EffectSuiteEditor::setupToggle (juce::ToggleButton& b, const juce::String& text, const juce::String& paramId,
-                                     std::unique_ptr<ButtonAttachment>& a)
-{
-    b.setButtonText (text);
-    b.setClickingTogglesState (true);
-    addAndMakeVisible (b);
-    a = std::make_unique<ButtonAttachment> (processor.apvts, paramId, b);
 }
 
 void EffectSuiteEditor::setupCombo (juce::ComboBox& c, const juce::String& paramId,
@@ -243,11 +328,6 @@ void EffectSuiteEditor::setupCombo (juce::ComboBox& c, const juce::String& param
         c.addItemList (choice->choices, 1);
     addAndMakeVisible (c);
     a = std::make_unique<ComboAttachment> (processor.apvts, paramId, c);
-}
-
-bool EffectSuiteEditor::isParamOn (const char* id) const
-{
-    return processor.apvts.getRawParameterValue (id)->load() > 0.5f;
 }
 
 //==============================================================================
@@ -272,13 +352,18 @@ void EffectSuiteEditor::chooseImpulseResponse()
 void EffectSuiteEditor::updateIrLabel()
 {
     lastIrName = processor.getImpulseResponseName();
-    irName.setText (lastIrName.isEmpty() ? juce::String ("Integrada") : lastIrName, juce::dontSendNotification);
+    const bool userIr = lastIrName.isNotEmpty();
+    irName.setText (userIr ? lastIrName : juce::String ("Sin IR"), juce::dontSendNotification);
+    irName.setColour (juce::Label::textColourId, userIr ? textColour : dimTextColour);
+    clearIr.setEnabled (userIr);
+    // The built-in cabinet is not in use while a user IR is loaded
+    cabModel.setEnabled (! userIr);
+    cabModelLabel.setEnabled (! userIr);
 }
 
 void EffectSuiteEditor::updateTuner()
 {
-    // detectPitch() uses buffers allocated in prepareToPlay; skip until audio has been seen (silence gives no note anyway)
-    const float hz = audioSeen ? processor.detectPitch() : 0.0f;
+    const float hz = processor.detectPitch();
     if (hz > 20.0f)
     {
         tunerMissed = 0;
@@ -299,30 +384,28 @@ void EffectSuiteEditor::updateTuner()
 
 void EffectSuiteEditor::timerCallback()
 {
-    const float inPk = processor.inputPeak.exchange (0.0f), outPk = processor.outputPeak.exchange (0.0f);
-    if (inPk > 0.0f || outPk > 0.0f)
-        audioSeen = true;
-    inMeter.pushLevel (inPk);
-    outMeter.pushLevel (outPk);
+    inMeter.pushLevel (processor.inputPeak.exchange (0.0f));
+    outMeter.pushLevel (processor.outputPeak.exchange (0.0f));
 
-    static int tick = 0;
-    if ((++tick % 2) == 0)
+    if ((++timerTick % 2) == 0)
     {
         updateTuner();
         repaint (topBar);
     }
 
-    const bool states[] = { true, isParamOn ("gateOn"), isParamOn ("odOn"), isParamOn ("ampOn"),
-                            isParamOn ("cabOn"), true };
-    bool changed = false;
-    for (size_t i = 0; i < panels.size(); ++i)
-        if (panels[i].active != states[i])
+    // Follow the parameters (not just clicks) so host automation also dims the panels
+    for (auto& panel : panels)
+    {
+        if (panel.onParamId.isEmpty())
+            continue;
+
+        const bool on = processor.apvts.getRawParameterValue (panel.onParamId)->load() > 0.5f;
+        if (panel.active != on)
         {
-            panels[i].active = states[i];
-            changed = true;
+            panel.active = on;
+            repaint (panel.bounds.getSmallestIntegerContainer());
         }
-    if (changed)
-        repaint();
+    }
 
     if (processor.getImpulseResponseName() != lastIrName)
         updateIrLabel();
@@ -332,7 +415,7 @@ void EffectSuiteEditor::timerCallback()
 void EffectSuiteEditor::paint (juce::Graphics& g)
 {
     g.fillAll (bgColour);
-    const float scale = (float) getHeight() / 420.0f;
+    const float scale = uiScale();
 
     // top bar
     g.setColour (juce::Colour (0xff191c21));
@@ -390,7 +473,7 @@ void EffectSuiteEditor::paint (juce::Graphics& g)
         g.drawRoundedRectangle (p.bounds.reduced (0.5f), 8.0f * scale, 1.0f);
         g.setColour (accentColour.withAlpha (p.active ? 1.0f : 0.4f));
         g.setFont (juce::FontOptions (15.0f * scale, juce::Font::bold));
-        g.drawText (p.title.toUpperCase(), p.bounds.withTrimmedLeft (12.0f * scale).withHeight (28.0f * scale),
+        g.drawText (p.title.toUpperCase(), p.bounds.withTrimmedLeft (12.0f * scale).withHeight (30.0f * scale),
                     juce::Justification::centredLeft);
     }
 }
@@ -406,26 +489,36 @@ void EffectSuiteEditor::paintOverChildren (juce::Graphics& g)
         if (p.toggle != nullptr)
             g.excludeClipRegion (p.toggle->getBounds());
         g.setColour (bgColour.withAlpha (0.55f));
-        g.fillRoundedRectangle (p.bounds, 8.0f * (float) getHeight() / 420.0f);
+        g.fillRoundedRectangle (p.bounds, 8.0f * uiScale());
     }
 }
 
 void EffectSuiteEditor::layoutKnob (Knob& k, juce::Rectangle<int> area)
 {
-    const int labelH = juce::jlimit (14, 20, (int) (area.getHeight() * 0.13f));
-    const int boxH = juce::jlimit (14, 22, (int) (area.getHeight() * 0.13f));
-    const int groupH = juce::jmin (area.getHeight(), area.getWidth() + labelH + boxH);
-    area = area.withSizeKeepingCentre (area.getWidth(), groupH);
+    const float s = uiScale();
+    const int labelH = juce::roundToInt (20 * s);
+    const int boxH = juce::roundToInt (20 * s);
+    // Keep label, knob and value together as one centred group instead of spreading them over a tall cell
+    const int knobSize = juce::jmin (area.getWidth(), area.getHeight() - labelH - boxH, juce::roundToInt (120 * s));
+    area = area.withSizeKeepingCentre (area.getWidth(), knobSize + labelH + boxH);
     k.label.setBounds (area.removeFromTop (labelH));
-    k.slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, juce::jmax (40, area.getWidth() - 8), boxH);
+    k.label.setFont (juce::FontOptions (14.0f * s));
+    k.slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, area.getWidth(), boxH);
     k.slider.setBounds (area);
-    k.label.setFont (juce::FontOptions ((float) juce::jlimit (11, 16, labelH - 3)));
+}
+
+void EffectSuiteEditor::layoutKnobRow (const std::vector<Knob*>& list, size_t first, size_t count,
+                                       juce::Rectangle<int> area)
+{
+    const int w = area.getWidth() / (int) count;
+    for (size_t i = 0; i < count; ++i)
+        layoutKnob (*list[first + i], area.removeFromLeft (w));
 }
 
 void EffectSuiteEditor::resized()
 {
     auto area = getLocalBounds();
-    const float s = (float) getHeight() / 420.0f;
+    const float s = uiScale();
     const int pad = juce::roundToInt (8 * s);
     const int titleH = juce::roundToInt (30 * s);
     const int rowH = juce::roundToInt (28 * s);
@@ -435,94 +528,112 @@ void EffectSuiteEditor::resized()
         auto tb = topBar.reduced (juce::roundToInt (14 * s), juce::roundToInt (9 * s));
         tb.removeFromLeft (juce::roundToInt (230 * s));
         auto q = tb.removeFromRight (juce::roundToInt (210 * s));
-        qualityLabel.setBounds (q.removeFromLeft (juce::roundToInt (54 * s)));
+        qualityLabel.setBounds (q.removeFromLeft (juce::roundToInt (58 * s)));
         qualityLabel.setFont (juce::FontOptions (13.0f * s));
-        quality.setBounds (q.reduced (0, juce::roundToInt (4 * s)));
+        quality.setBounds (q.reduced (0, juce::roundToInt (6 * s)));
         tb.removeFromRight (juce::roundToInt (10 * s));
-        tunerMute.setBounds (tb.removeFromRight (juce::roundToInt (130 * s)));
+        tunerMute.setBounds (tb.removeFromRight (juce::roundToInt (140 * s)));
         tb.removeFromRight (juce::roundToInt (10 * s));
         tunerArea = tb;
     }
 
+    // Two rows of six panels, in signal order
     area.reduce (pad, pad);
-    const float weights[] = { 1.2f, 1.35f, 1.6f, 2.85f, 1.5f, 1.15f };
-    float total = 0;
-    for (float w : weights) total += w;
-    const float gap = (float) pad;
-    const float avail = (float) area.getWidth() - gap * 5.0f;
+    auto rowTop = area.removeFromTop (juce::roundToInt ((float) area.getHeight() * 0.42f));
+    area.removeFromTop (pad);
 
-    float x = (float) area.getX();
-    juce::Rectangle<int> pr[6];
-    for (int i = 0; i < 6; ++i)
+    const float weights[2][6] = { { 1.45f, 1.1f, 1.6f, 1.6f, 1.6f, 1.6f },
+                                  { 2.5f, 1.6f, 1.55f, 1.55f, 1.3f, 1.1f } };
+    const juce::Rectangle<int> rows[2] = { rowTop, area };
+
+    for (int row = 0; row < 2; ++row)
     {
-        const float w = avail * weights[i] / total;
-        panels[(size_t) i].bounds = { x, (float) area.getY(), w, (float) area.getHeight() };
-        pr[i] = panels[(size_t) i].bounds.toNearestInt().reduced (pad, 0).withTrimmedBottom (pad);
-        pr[i].removeFromTop (0);
-        x += w + gap;
+        float total = 0.0f;
+        for (float w : weights[row])
+            total += w;
+
+        const float avail = (float) rows[row].getWidth() - (float) pad * 5.0f;
+        float x = (float) rows[row].getX();
+
+        for (int i = 0; i < 6; ++i)
+        {
+            auto& panel = panels[(size_t) (row * 6 + i)];
+            const float w = avail * weights[row][i] / total;
+            panel.bounds = { x, (float) rows[row].getY(), w, (float) rows[row].getHeight() };
+            x += w + (float) pad;
+
+            auto inner = panel.bounds.toNearestInt().reduced (pad, 0);
+            if (panel.toggle != nullptr)
+                panel.toggle->setBounds (inner.withHeight (titleH)
+                                              .withTrimmedLeft (inner.getWidth() - juce::roundToInt (64 * s)));
+            panel.content = inner.withTrimmedTop (titleH).withTrimmedBottom (pad);
+        }
     }
 
-    auto content = [&] (int i)
-    {
-        auto r = pr[i];
-        r.removeFromTop (titleH);
-        return r;
-    };
+    const int meterW = juce::roundToInt (20 * s);
 
-    // Entrada: knob, combo, meter
+    // Top-row pedals: one row of knobs
+    for (auto index : { pGate, pComp, pOverdrive, pDist, pFuzz })
     {
-        auto r = content (0);
-        auto m = r.removeFromRight (juce::roundToInt (22 * s));
-        inMeter.setBounds (m.reduced (0, 2));
+        auto& panel = panels[(size_t) index];
+        auto r = panel.content;
+        if (panel.combo != nullptr)
+            panel.combo->setBounds (r.removeFromTop (rowH).reduced (0, juce::roundToInt (1 * s)));
+        layoutKnobRow (panel.knobs, 0, panel.knobs.size(), r);
+    }
+
+    // Bottom-row pedals are taller than wide: two knobs on top, the rest centred below
+    for (auto index : { pChorus, pDelay, pReverb })
+    {
+        auto& panel = panels[(size_t) index];
+        auto r = panel.content;
+        const int half = (r.getHeight() - pad) / 2;
+        auto top = r.removeFromTop (half);
+        auto bottom = r.removeFromBottom (half);
+
+        if (panel.knobs.size() == 2)
+        {
+            layoutKnob (*panel.knobs[0], top);
+            layoutKnob (*panel.knobs[1], bottom);
+        }
+        else
+        {
+            layoutKnobRow (panel.knobs, 0, 2, top);
+            layoutKnob (*panel.knobs[2], bottom.withSizeKeepingCentre (bottom.getWidth() / 2, bottom.getHeight()));
+        }
+    }
+
+    // Entrada: knob, channel combo, meter
+    {
+        auto r = panels[pInput].content;
+        inMeter.setBounds (r.removeFromRight (meterW));
         r.removeFromRight (pad);
         auto row = r.removeFromBottom (rowH * 2);
         inputModeLabel.setBounds (row.removeFromTop (rowH));
         inputModeLabel.setFont (juce::FontOptions (13.0f * s));
-        inputMode.setBounds (row.reduced (0, 2));
-        layoutKnob (inputGain, r);
+        inputMode.setBounds (row.reduced (0, juce::roundToInt (2 * s)));
+        layoutKnob (*panels[pInput].knobs[0], r);
     }
-    // Puerta
+    // Amplificador: model combo, two rows of three knobs with a gap between them
     {
-        auto r = content (1);
-        auto head = panels[1].bounds.toNearestInt().reduced (pad, 0);
-        gateOn.setBounds (head.withHeight (titleH).withTrimmedLeft (head.getWidth() - juce::roundToInt (60 * s)));
-        layoutKnob (gateThreshold, r);
-    }
-    // Overdrive
-    {
-        auto r = content (2);
-        auto head = panels[2].bounds.toNearestInt().reduced (pad, 0);
-        odOn.setBounds (head.withHeight (titleH).withTrimmedLeft (head.getWidth() - juce::roundToInt (60 * s)));
-        const int w = r.getWidth() / 3;
-        layoutKnob (odDrive, r.removeFromLeft (w));
-        layoutKnob (odTone, r.removeFromLeft (w));
-        layoutKnob (odLevel, r);
-    }
-    // Amplificador
-    {
-        auto r = content (3);
-        auto head = panels[3].bounds.toNearestInt().reduced (pad, 0);
-        ampOn.setBounds (head.withHeight (titleH).withTrimmedLeft (head.getWidth() - juce::roundToInt (60 * s)));
+        auto r = panels[pAmp].content;
         auto row = r.removeFromTop (rowH);
-        ampModelLabel.setBounds (row.removeFromLeft (juce::roundToInt (56 * s)));
+        ampModelLabel.setBounds (row.removeFromLeft (juce::roundToInt (58 * s)));
         ampModelLabel.setFont (juce::FontOptions (13.0f * s));
-        ampModel.setBounds (row.reduced (0, 1));
-        auto top = r.removeFromTop (r.getHeight() / 2);
-        const int w = r.getWidth() / 3;
-        Knob* k[] = { &ampGain, &ampBass, &ampMid, &ampTreble, &ampPresence, &ampMaster };
-        for (int i = 0; i < 3; ++i)
-        {
-            layoutKnob (*k[i], top.removeFromLeft (w));
-            layoutKnob (*k[i + 3], r.removeFromLeft (w));
-        }
+        ampModel.setBounds (row.reduced (0, juce::roundToInt (1 * s)));
+        r.removeFromTop (pad);
+        const int half = (r.getHeight() - pad * 2) / 2;
+        layoutKnobRow (panels[pAmp].knobs, 0, 3, r.removeFromTop (half));
+        layoutKnobRow (panels[pAmp].knobs, 3, 3, r.removeFromBottom (half));
     }
     // Pantalla
     {
-        auto r = content (4);
-        auto head = panels[4].bounds.toNearestInt().reduced (pad, 0);
-        cabOn.setBounds (head.withHeight (titleH).withTrimmedLeft (head.getWidth() - juce::roundToInt (60 * s)));
-        const int bh = juce::roundToInt (34 * s);
-        r.removeFromTop (pad);
+        auto r = panels[pCab].content;
+        const int bh = juce::roundToInt (32 * s);
+        cabModelLabel.setBounds (r.removeFromTop (juce::roundToInt (20 * s)));
+        cabModelLabel.setFont (juce::FontOptions (13.0f * s));
+        cabModel.setBounds (r.removeFromTop (rowH).reduced (0, juce::roundToInt (1 * s)));
+        r.removeFromTop (pad * 2);
         loadIr.setBounds (r.removeFromTop (bh));
         r.removeFromTop (pad);
         irName.setBounds (r.removeFromTop (bh));
@@ -532,10 +643,9 @@ void EffectSuiteEditor::resized()
     }
     // Salida
     {
-        auto r = content (5);
-        auto m = r.removeFromRight (juce::roundToInt (22 * s));
-        outMeter.setBounds (m.reduced (0, 2));
+        auto r = panels[pOutput].content;
+        outMeter.setBounds (r.removeFromRight (meterW));
         r.removeFromRight (pad);
-        layoutKnob (outputLevel, r);
+        layoutKnob (*panels[pOutput].knobs[0], r);
     }
 }
