@@ -1,0 +1,74 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Pruebas del motor de audio
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Dependencias
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libasound2-dev libx11-dev libxrandr-dev libxinerama-dev \
+            libxcursor-dev libxext-dev libxi-dev libfreetype-dev libfontconfig1-dev libgl-dev
+      - name: Compilar
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DEFFECTSUITE_BUILD_PLUGIN=OFF
+          cmake --build build
+      - name: Medir
+        run: ./build/EffectSuiteMeasure_artefacts/Release/EffectSuiteMeasure
+
+  windows:
+    name: Windows (aplicación + VST3)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Compilar
+        run: |
+          cmake -S . -B build -A x64 -DEFFECTSUITE_BUILD_TESTS=OFF
+          cmake --build build --config Release --parallel
+      - name: Empaquetar
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item build/EffectSuite_artefacts/Release/Standalone/EffectSuite.exe dist/
+          Copy-Item -Recurse build/EffectSuite_artefacts/Release/VST3/EffectSuite.vst3 dist/
+      - uses: actions/upload-artifact@v7
+        with:
+          name: EffectSuite-Windows
+          path: dist
+
+  macos:
+    name: macOS (aplicación + VST3 + AU, Intel y Apple Silicon)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Compilar
+        run: |
+          cmake -S . -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DEFFECTSUITE_BUILD_TESTS=OFF
+          cmake --build build --config Release --parallel
+      - name: Empaquetar
+        run: |
+          mkdir dist
+          cp -R build/EffectSuite_artefacts/Release/Standalone/EffectSuite.app dist/
+          cp -R build/EffectSuite_artefacts/Release/VST3/EffectSuite.vst3 dist/
+          cp -R build/EffectSuite_artefacts/Release/AU/EffectSuite.component dist/
+          for bundle in dist/*; do codesign --force --deep --sign - "$bundle"; done
+          lipo -archs dist/EffectSuite.app/Contents/MacOS/EffectSuite
+          ditto -c -k dist EffectSuite-macOS.zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: EffectSuite-macOS
+          path: EffectSuite-macOS.zip
