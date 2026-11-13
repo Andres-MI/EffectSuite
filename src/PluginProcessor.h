@@ -64,6 +64,12 @@ private:
     struct ParamRefs
     {
         std::atomic<float> *inputGain, *inputMode, *gateOn, *gateThreshold,
+                           *wahOn, *wahMode, *wahPosition, *wahQ,
+                           *octOn, *octSub, *octDry,
+                           *phaserOn, *phaserRate, *phaserDepth, *phaserFeedback,
+                           *eqOn, *eqLow, *eqLowMid, *eqHighMid, *eqHigh,
+                           *flangerOn, *flangerRate, *flangerDepth, *flangerFeedback,
+                           *tremOn, *tremRate, *tremDepth,
                            *compOn, *compSustain, *compAttack, *compLevel,
                            *odOn, *odModel, *odDrive, *odTone, *odLevel,
                            *distOn, *distModel, *distGain, *distTone, *distLevel,

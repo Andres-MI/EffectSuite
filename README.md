@@ -10,20 +10,26 @@ Funciona como aplicación independiente y como plugin (VST3 en Windows y Mac, AU
 |---|---|---|
 | Afinador cromático | | Detección de tono YIN, error medido < 0,2 cents; llega al Si grave de un bajo de 5 cuerdas |
 | Puerta de ruido | | Con histéresis y retención |
+| Wah | Manual, Auto | Paso banda resonante de 350 Hz a 2,2 kHz; el modo manual es automatizable |
 | Compresor | | Detector de pico, relación 4:1 con codo suave |
+| Octavador | | Divisor de frecuencia analógico: añade la octava inferior (monofónico) |
+| Phaser | | Cuatro etapas pasa-todo con realimentación |
 | Overdrive | Mid Boost, Blues, Transparent, Bass Drive | Circuito de diodos en la realimentación de un operacional, resuelto por Newton-Raphson en cada muestra |
 | Distorsión | Classic, Rodent, Metal, Bass Distortion | Circuito de recorte duro: operacional de alta ganancia y diodos a masa, resuelto igual |
 | Fuzz | Vintage, Octave, Bass Fuzz | Dos etapas de saturación asimétrica (modelo de comportamiento, no de circuito) |
 | Amplificador de guitarra | Clean American, Tweed, Class A Chime, British Crunch, High Gain, Modern Lead | Previo de varias etapas de válvula, control de tonos calculado desde el circuito real y etapa de potencia con sag |
 | Amplificador de bajo | Bass Tube, Bass Clean, Bass Rock | Igual, con respuesta extendida en graves |
 | Pantalla | Guitar 4x12, Guitar 2x12 Open, Guitar 1x12, Bass 8x10, Bass 1x15 | Pantallas integradas por filtros, o carga de respuestas a impulso propias (WAV/AIFF) sin latencia |
+| Ecualizador | | Cuatro bandas de ±12 dB: 100 Hz, 400 Hz, 1,6 kHz y 5 kHz |
+| Flanger | | Retardo de 1 a 6 ms modulado, con realimentación |
 | Chorus | | Estéreo, con retardo modulado en cuadratura |
+| Tremolo | | Modulación de volumen de 1 a 12 Hz |
 | Delay | | Hasta 1,5 s, con realimentación filtrada |
 | Reverb | | Estéreo, algoritmo Freeverb |
 
 Los modelos "Bass" de los pedales conservan los graves limpios y solo saturan el resto, para que el bajo no pierda cuerpo.
 
-Orden de la señal: puerta → compresor → overdrive → distorsión → fuzz → amplificador → pantalla → chorus → delay → reverb.
+Orden de la señal: puerta → wah → compresor → octavador → phaser → overdrive → distorsión → fuzz → amplificador → pantalla → ecualizador → flanger → chorus → tremolo → delay → reverb.
 
 El procesado añade unas 4 muestras de latencia (0,1 ms). El resto de la latencia depende del driver y del tamaño de búfer de la interfaz de audio.
 

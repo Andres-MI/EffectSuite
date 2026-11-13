@@ -28,7 +28,7 @@ struct OnePole
     double G = 0.0, s = 0.0;
 };
 
-/** Filtro de campana (peaking) de segundo orden. */
+/** Filtro de segundo orden: campana (peaking) o estantería. */
 struct PeakFilter
 {
     void set (double hz, double q, double gainDb, double sampleRate) noexcept
@@ -42,6 +42,21 @@ struct PeakFilter
         b2 = (1.0 - alpha * A) / a0;
         a1 = b1;
         a2 = (1.0 - alpha / A) / a0;
+    }
+
+    /** Estantería (shelf) de graves o de agudos. */
+    void setShelf (bool high, double hz, double gainDb, double sampleRate) noexcept
+    {
+        const double A = std::pow (10.0, gainDb / 40.0);
+        const double w = 2.0 * 3.14159265358979323846 * std::min (hz, 0.45 * sampleRate) / sampleRate;
+        const double c = std::cos (w), sq = 2.0 * std::sqrt (A) * std::sin (w) * 0.7071067811865476;
+        const double sign = high ? -1.0 : 1.0;      // la de agudos es la de graves con el coseno invertido
+        const double a0 = (A + 1.0) + sign * (A - 1.0) * c + sq;
+        b0 = A * ((A + 1.0) - sign * (A - 1.0) * c + sq) / a0;
+        b1 = sign * 2.0 * A * ((A - 1.0) - sign * (A + 1.0) * c) / a0;
+        b2 = A * ((A + 1.0) - sign * (A - 1.0) * c - sq) / a0;
+        a1 = -sign * 2.0 * ((A - 1.0) + sign * (A + 1.0) * c) / a0;
+        a2 = ((A + 1.0) + sign * (A - 1.0) * c - sq) / a0;
     }
 
     void reset() noexcept { s1 = s2 = 0.0; }

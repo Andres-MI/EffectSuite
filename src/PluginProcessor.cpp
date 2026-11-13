@@ -32,10 +32,24 @@ APVTS::ParameterLayout EffectSuiteProcessor::createLayout()
     layout.add (std::make_unique<Float> (id ("gateThreshold"), "Gate Threshold", Range (-90.0f, -20.0f, 0.1f), -65.0f,
                                          juce::AudioParameterFloatAttributes().withLabel ("dB")));
 
+    layout.add (std::make_unique<Bool> (id ("wahOn"), "Wah On", false));
+    layout.add (std::make_unique<Choice> (id ("wahMode"), "Wah Mode", juce::StringArray { "Manual", "Auto" }, 1));
+    knob ("wahPosition", "Wah Position", 0.5f);
+    knob ("wahQ", "Wah Resonance", 0.5f);
+
     layout.add (std::make_unique<Bool> (id ("compOn"), "Compressor On", false));
     knob ("compSustain", "Compressor Sustain", 0.5f);
     knob ("compAttack", "Compressor Attack", 0.3f);
     knob ("compLevel", "Compressor Level", 0.5f);
+
+    layout.add (std::make_unique<Bool> (id ("octOn"), "Octaver On", false));
+    knob ("octSub", "Octaver Sub", 0.6f);
+    knob ("octDry", "Octaver Dry", 0.7f);
+
+    layout.add (std::make_unique<Bool> (id ("phaserOn"), "Phaser On", false));
+    knob ("phaserRate", "Phaser Rate", 0.3f);
+    knob ("phaserDepth", "Phaser Depth", 0.7f);
+    knob ("phaserFeedback", "Phaser Feedback", 0.4f);
 
     layout.add (std::make_unique<Bool> (id ("odOn"), "Overdrive On", false));
     layout.add (std::make_unique<Choice> (id ("odModel"), "Overdrive Model", names (fx::overdrives::all), 0));
@@ -67,6 +81,21 @@ APVTS::ParameterLayout EffectSuiteProcessor::createLayout()
     layout.add (std::make_unique<Bool> (id ("cabOn"), "Cabinet On", true));
     layout.add (std::make_unique<Choice> (id ("cabModel"), "Cabinet Model",
                                           juce::StringArray (fx::GuitarChain::cabNames, fx::GuitarChain::numCabs), 0));
+    layout.add (std::make_unique<Bool> (id ("eqOn"), "EQ On", false));
+    for (auto band : { std::pair<const char*, const char*> { "eqLow", "EQ Low" }, { "eqLowMid", "EQ Low Mid" },
+                       { "eqHighMid", "EQ High Mid" }, { "eqHigh", "EQ High" } })
+        layout.add (std::make_unique<Float> (id (band.first), band.second, Range (-12.0f, 12.0f, 0.1f), 0.0f,
+                                             juce::AudioParameterFloatAttributes().withLabel ("dB")));
+
+    layout.add (std::make_unique<Bool> (id ("flangerOn"), "Flanger On", false));
+    knob ("flangerRate", "Flanger Rate", 0.3f);
+    knob ("flangerDepth", "Flanger Depth", 0.6f);
+    knob ("flangerFeedback", "Flanger Feedback", 0.5f);
+
+    layout.add (std::make_unique<Bool> (id ("tremOn"), "Tremolo On", false));
+    knob ("tremRate", "Tremolo Rate", 0.5f);
+    knob ("tremDepth", "Tremolo Depth", 0.6f);
+
     layout.add (std::make_unique<Bool> (id ("chorusOn"), "Chorus On", false));
     knob ("chorusRate", "Chorus Rate", 0.3f);
     knob ("chorusDepth", "Chorus Depth", 0.5f);
@@ -100,6 +129,12 @@ EffectSuiteProcessor::EffectSuiteProcessor()
     auto ref = [this] (const char* name) { return apvts.getRawParameterValue (name); };
 
     params = { ref ("inputGain"), ref ("inputMode"), ref ("gateOn"), ref ("gateThreshold"),
+               ref ("wahOn"), ref ("wahMode"), ref ("wahPosition"), ref ("wahQ"),
+               ref ("octOn"), ref ("octSub"), ref ("octDry"),
+               ref ("phaserOn"), ref ("phaserRate"), ref ("phaserDepth"), ref ("phaserFeedback"),
+               ref ("eqOn"), ref ("eqLow"), ref ("eqLowMid"), ref ("eqHighMid"), ref ("eqHigh"),
+               ref ("flangerOn"), ref ("flangerRate"), ref ("flangerDepth"), ref ("flangerFeedback"),
+               ref ("tremOn"), ref ("tremRate"), ref ("tremDepth"),
                ref ("compOn"), ref ("compSustain"), ref ("compAttack"), ref ("compLevel"),
                ref ("odOn"), ref ("odModel"), ref ("odDrive"), ref ("odTone"), ref ("odLevel"),
                ref ("distOn"), ref ("distModel"), ref ("distGain"), ref ("distTone"), ref ("distLevel"),
@@ -148,6 +183,29 @@ fx::ChainParams EffectSuiteProcessor::readParams() const
     p.inputGainDb     = params.inputGain->load();
     p.gateOn          = params.gateOn->load() > 0.5f;
     p.gateThresholdDb = params.gateThreshold->load();
+    p.wahOn           = params.wahOn->load() > 0.5f;
+    p.wahMode         = (int) params.wahMode->load();
+    p.wahPosition     = params.wahPosition->load();
+    p.wahQ            = params.wahQ->load();
+    p.octOn           = params.octOn->load() > 0.5f;
+    p.octSub          = params.octSub->load();
+    p.octDry          = params.octDry->load();
+    p.phaserOn        = params.phaserOn->load() > 0.5f;
+    p.phaserRate      = params.phaserRate->load();
+    p.phaserDepth     = params.phaserDepth->load();
+    p.phaserFeedback  = params.phaserFeedback->load();
+    p.eqOn            = params.eqOn->load() > 0.5f;
+    p.eqLow           = params.eqLow->load();
+    p.eqLowMid        = params.eqLowMid->load();
+    p.eqHighMid       = params.eqHighMid->load();
+    p.eqHigh          = params.eqHigh->load();
+    p.flangerOn       = params.flangerOn->load() > 0.5f;
+    p.flangerRate     = params.flangerRate->load();
+    p.flangerDepth    = params.flangerDepth->load();
+    p.flangerFeedback = params.flangerFeedback->load();
+    p.tremOn          = params.tremOn->load() > 0.5f;
+    p.tremRate        = params.tremRate->load();
+    p.tremDepth       = params.tremDepth->load();
     p.compOn          = params.compOn->load() > 0.5f;
     p.compSustain     = params.compSustain->load();
     p.compAttack      = params.compAttack->load();

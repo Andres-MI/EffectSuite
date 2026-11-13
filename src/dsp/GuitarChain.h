@@ -4,6 +4,7 @@
 #include "Compressor.h"
 #include "Distortion.h"
 #include "Fuzz.h"
+#include "Modulation.h"
 #include "NoiseGate.h"
 #include "Overdrive.h"
 #include "TimeEffects.h"
@@ -15,8 +16,15 @@ struct ChainParams
     float inputGainDb = 0.0f;
     bool  gateOn = true;
     float gateThresholdDb = -60.0f;
+    bool  wahOn = false;
+    int   wahMode = 0;          // 0 = manual, 1 = auto
+    float wahPosition = 0.5f, wahQ = 0.5f;
     bool  compOn = false;
     float compSustain = 0.5f, compAttack = 0.3f, compLevel = 0.5f;
+    bool  octOn = false;
+    float octSub = 0.6f, octDry = 0.7f;
+    bool  phaserOn = false;
+    float phaserRate = 0.3f, phaserDepth = 0.7f, phaserFeedback = 0.4f;
     bool  odOn = false;
     int   odModel = 0;
     float odDrive = 0.5f, odTone = 0.5f, odLevel = 0.7f;
@@ -31,8 +39,14 @@ struct ChainParams
     float ampGain = 0.5f, ampBass = 0.5f, ampMid = 0.5f, ampTreble = 0.5f, ampPresence = 0.5f, ampMaster = 0.5f;
     bool  cabOn = true;
     int   cabModel = 0;
+    bool  eqOn = false;
+    float eqLow = 0.0f, eqLowMid = 0.0f, eqHighMid = 0.0f, eqHigh = 0.0f;      // dB
+    bool  flangerOn = false;
+    float flangerRate = 0.3f, flangerDepth = 0.6f, flangerFeedback = 0.5f;
     bool  chorusOn = false;
     float chorusRate = 0.3f, chorusDepth = 0.5f, chorusMix = 0.6f;
+    bool  tremOn = false;
+    float tremRate = 0.5f, tremDepth = 0.6f;
     bool  delayOn = false;
     float delayTimeMs = 380.0f, delayFeedback = 0.35f, delayMix = 0.3f;
     bool  reverbOn = false;
@@ -43,8 +57,8 @@ struct ChainParams
 
 /** Cadena completa, entrada mono y salida estéreo:
 
-    puerta -> compresor -> overdrive -> distorsión -> fuzz -> amplificador -> pantalla
-           -> chorus -> delay -> reverb
+    puerta -> wah -> compresor -> octavador -> phaser -> overdrive -> distorsión -> fuzz
+           -> amplificador -> pantalla -> ecualizador -> flanger -> chorus -> tremolo -> delay -> reverb
 
     Los pedales de saturación y el amplificador se procesan sobremuestreados para
     que la distorsión no genere aliasing. Nada de lo que hace process() reserva memoria.
@@ -76,6 +90,12 @@ public:
 
         gate.prepare (fs);
         compressor.prepare (fs);
+        wah.prepare (fs);
+        octaver.prepare (fs);
+        phaser.prepare (fs);
+        equalizer.prepare (fs);
+        flanger.prepare (fs);
+        tremolo.prepare (fs);
         chorus.prepare (fs);
         delay.prepare (fs);
         reverb.setSampleRate (fs);
@@ -150,6 +170,12 @@ public:
         overdrive.setVoicing (p.odModel);
         distortion.setVoicing (p.distModel);
         fuzz.setVoicing (p.fuzzModel);
+        wah.setControls (p.wahMode, p.wahPosition, p.wahQ);
+        octaver.setControls (p.octSub, p.octDry);
+        phaser.setControls (p.phaserRate, p.phaserDepth, p.phaserFeedback);
+        equalizer.setControls (p.eqLow, p.eqLowMid, p.eqHighMid, p.eqHigh);
+        flanger.setControls (p.flangerRate, p.flangerDepth, p.flangerFeedback);
+        tremolo.setControls (p.tremRate, p.tremDepth);
         compressor.setControls (p.compSustain, p.compAttack, p.compLevel);
         distortion.setControls (p.distGain, p.distTone, p.distLevel);
         fuzz.setControls (p.fuzzAmount, p.fuzzTone, p.fuzzLevel);
@@ -187,13 +213,21 @@ public:
             amp.reset();
             chorus.reset();
             delay.reset();
+            wah.reset();
+            octaver.reset();
+            phaser.reset();
+            flanger.reset();
+            tremolo.reset();
         }
 
         for (int i = 0; i < numSamples; ++i)
         {
             float x = data[i] * inputGain.getNextValue();
-            if (p.gateOn) x = gate.process (x);
-            if (p.compOn) x = compressor.process (x);
+            if (p.gateOn)   x = gate.process (x);
+            if (p.wahOn)    x = wah.process (x);
+            if (p.compOn)   x = compressor.process (x);
+            if (p.octOn)    x = octaver.process (x);
+            if (p.phaserOn) x = phaser.process (x);
             data[i] = x;
         }
 
@@ -237,6 +271,14 @@ public:
             }
         }
 
+        if (p.eqOn)
+            for (int i = 0; i < numSamples; ++i)
+                data[i] = equalizer.process (data[i]);
+
+        if (p.flangerOn)
+            for (int i = 0; i < numSamples; ++i)
+                data[i] = flanger.process (data[i]);
+
         if (p.chorusOn)
         {
             for (int i = 0; i < numSamples; ++i)
@@ -246,6 +288,16 @@ public:
         {
             for (int i = 0; i < numSamples; ++i)
                 left[i] = right[i] = data[i];
+        }
+
+        if (p.tremOn)
+        {
+            for (int i = 0; i < numSamples; ++i)
+            {
+                const float g = tremolo.nextGain();
+                left[i] *= g;
+                right[i] *= g;
+            }
         }
 
         if (p.delayOn)
@@ -281,6 +333,12 @@ private:
     Distortion distortion;
     Fuzz fuzz;
     Amp amp;
+    Wah wah;
+    Octaver octaver;
+    Phaser phaser;
+    Equalizer equalizer;
+    Flanger flanger;
+    Tremolo tremolo;
     Chorus chorus;
     Delay delay;
     juce::Reverb reverb;

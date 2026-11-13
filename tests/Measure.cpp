@@ -240,6 +240,7 @@ void testCpu()
         fx::ChainParams p;
         p.odOn = true; p.ampOn = true; p.ampModel = 2; p.ampGain = 0.7f; p.cabOn = true; p.gateOn = true; p.quality = q;
         p.compOn = p.distOn = p.fuzzOn = p.chorusOn = p.delayOn = p.reverbOn = true;
+        p.wahOn = p.octOn = p.phaserOn = p.eqOn = p.flangerOn = p.tremOn = true;
         auto x = sine (196.0, fs, 0.3, (size_t) (fs * seconds));
         const auto t0 = std::chrono::steady_clock::now();
         runChain (chain, x, p);
@@ -374,6 +375,12 @@ void testStability()
         p.chorusOn = u (rng) > 0.5f; p.chorusRate = u (rng); p.chorusDepth = u (rng); p.chorusMix = u (rng);
         p.delayOn = u (rng) > 0.5f; p.delayTimeMs = 20.0f + 1480.0f * u (rng); p.delayFeedback = u (rng); p.delayMix = u (rng);
         p.reverbOn = u (rng) > 0.5f; p.reverbSize = u (rng); p.reverbMix = u (rng);
+        p.wahOn = u (rng) > 0.5f; p.wahMode = u (rng) > 0.5f ? 1 : 0; p.wahPosition = u (rng); p.wahQ = u (rng);
+        p.octOn = u (rng) > 0.5f; p.octSub = u (rng); p.octDry = u (rng);
+        p.phaserOn = u (rng) > 0.5f; p.phaserRate = u (rng); p.phaserDepth = u (rng); p.phaserFeedback = u (rng);
+        p.eqOn = u (rng) > 0.5f; p.eqLow = 24.0f * u (rng) - 12.0f; p.eqLowMid = 24.0f * u (rng) - 12.0f; p.eqHighMid = 24.0f * u (rng) - 12.0f; p.eqHigh = 24.0f * u (rng) - 12.0f;
+        p.flangerOn = u (rng) > 0.5f; p.flangerRate = u (rng); p.flangerDepth = u (rng); p.flangerFeedback = u (rng);
+        p.tremOn = u (rng) > 0.5f; p.tremRate = u (rng); p.tremDepth = u (rng);
 
         const int n = 1 + (int) (u (rng) * 255.0f);
         const float amp = (b % 50 == 0) ? 4.0f : 0.5f;
@@ -507,6 +514,112 @@ void testPedals()
 }
 
 //==============================================================================
+/** Nivel en dB de un tono (bin exacto) a la salida de la cadena. */
+double toneLevel (const fx::ChainParams& p, int bin, double amp = 0.1)
+{
+    const double fs = 48000.0;
+    const int order = 15, n = 1 << order;
+    fx::GuitarChain chain;
+    chain.prepare (fs, 64);
+    auto x = sine (bin * fs / n, fs, amp, (size_t) (2 * n));
+    runChain (chain, x, p);
+    return 10.0 * std::log10 (std::max (powerSpectrum (x.data() + n, order)[(size_t) bin], 1e-30));
+}
+
+void testModulation()
+{
+    std::printf ("\n11. Wah, octavador, phaser, flanger, tremolo y ecualizador\n");
+    const double fs = 48000.0;
+    const int order = 15, n = 1 << order;
+    auto binOf = [&] (double hz) { return (int) std::lround (hz * n / fs); };
+
+    // Ecualizador: cada banda sube y baja lo que marca su control
+    {
+        bool ok = true;
+        struct Band { const char* name; float fx::ChainParams::* gain; double hz; };
+        for (auto b : { Band { "graves", &fx::ChainParams::eqLow, 50.0 }, Band { "medios graves", &fx::ChainParams::eqLowMid, 400.0 },
+                        Band { "medios agudos", &fx::ChainParams::eqHighMid, 1600.0 }, Band { "agudos", &fx::ChainParams::eqHigh, 12000.0 } })
+        {
+            auto p = cleanParams();
+            p.eqOn = true;
+            const double flat = toneLevel (p, binOf (b.hz));
+            p.*(b.gain) = 9.0f;
+            const double up = toneLevel (p, binOf (b.hz)) - flat;
+            p.*(b.gain) = -9.0f;
+            const double down = toneLevel (p, binOf (b.hz)) - flat;
+            std::printf ("   ecualizador, %-14s +9 dB -> %+.1f dB, -9 dB -> %+.1f dB\n", b.name, up, down);
+            ok = ok && std::abs (up - 9.0) < 1.0 && std::abs (down + 9.0) < 1.0;
+        }
+        check (ok, "ecualizador: cada banda aplica la ganancia pedida (error < 1 dB)");
+    }
+
+    // Wah manual: el pico del filtro sigue al control Position
+    {
+        auto p = cleanParams();
+        p.wahOn = true; p.wahMode = 0;
+        double best[2] {};
+        int i = 0;
+        for (float pos : { 0.0f, 1.0f })
+        {
+            p.wahPosition = pos;
+            double top = -300.0;
+            for (double hz = 200.0; hz < 4000.0; hz *= 1.12)
+            {
+                const double level = toneLevel (p, binOf (hz));
+                if (level > top) { top = level; best[i] = hz; }
+            }
+            ++i;
+        }
+        std::printf ("   wah: pico en %.0f Hz con el pedal atrás y en %.0f Hz con el pedal a fondo\n", best[0], best[1]);
+        check (best[0] > 280.0 && best[0] < 450.0 && best[1] > 1800.0 && best[1] < 2700.0, "wah: barre de ~350 Hz a ~2,2 kHz");
+    }
+
+    // Octavador: con un La de 220 Hz aparece un La de 110 Hz
+    {
+        auto p = cleanParams();
+        p.octOn = true; p.octSub = 1.0f; p.octDry = 0.0f;
+        const int bin = binOf (220.0);
+        fx::GuitarChain chain;
+        chain.prepare (fs, 64);
+        auto x = sine (bin * fs / n, fs, 0.1, (size_t) (2 * n));
+        runChain (chain, x, p);
+        const auto spec = powerSpectrum (x.data() + n, order);
+        auto q = cleanParams();
+        const double inputDb = toneLevel (q, bin);
+        const double subDb = 10.0 * std::log10 (spec[(size_t) (bin / 2)]), fundDb = 10.0 * std::log10 (std::max (spec[(size_t) bin], 1e-30));
+        std::printf ("   octavador: con un La de 220 Hz sale un La de 110 Hz a %+.1f dB respecto a la entrada\n", subDb - inputDb);
+        check (bin % 2 == 0 && subDb - fundDb > 10.0 && std::abs (subDb - inputDb) < 12.0, "octavador: genera la octava inferior a un nivel útil");
+    }
+
+    // Phaser y flanger: cambian el timbre con el tiempo sin disparar el nivel; tremolo: modula el volumen
+    {
+        bool ok = true;
+        for (int which = 0; which < 3; ++which)
+        {
+            auto p = cleanParams();
+            p.phaserOn = which == 0; p.flangerOn = which == 1; p.tremOn = which == 2;
+            p.phaserRate = p.flangerRate = 0.8f; p.tremRate = 0.5f; p.tremDepth = 0.8f;
+            fx::GuitarChain chain;
+            chain.prepare (fs, 64);
+            auto x = sine (1000.0, fs, 0.1, 96000);
+            runChain (chain, x, p);
+            double lo = 1e9, hi = 0.0;
+            for (size_t w = 48000; w + 480 <= x.size(); w += 480)
+            {
+                double peak = 0.0;
+                for (size_t k = w; k < w + 480; ++k) peak = std::max (peak, (double) std::abs (x[k]));
+                lo = std::min (lo, peak); hi = std::max (hi, peak);
+            }
+            const char* name = which == 0 ? "phaser" : (which == 1 ? "flanger" : "tremolo");
+            std::printf ("   %-8s el nivel de un tono de 1 kHz oscila entre %.1f y %.1f dB\n", name, dB (lo / 0.1), dB (hi / 0.1));
+            ok = ok && hi < 0.25 && dB (hi) - dB (lo) > 3.0;
+        }
+        check (ok, "phaser, flanger y tremolo modulan la señal sin disparar el nivel");
+    }
+
+}
+
+//==============================================================================
 /** Cuerda pulsada sintética (Karplus-Strong) para oír los modelos sin una guitarra real. */
 std::vector<float> syntheticRiff (double fs, double transpose = 1.0)
 {
@@ -583,6 +696,11 @@ void renderDemos (const juce::File& dir)
     { auto p = base (0, 0.35f); p.fuzzOn = true; demos.push_back ({ "7_clean_con_fuzz.wav", p }); }
     { auto p = base (2, 0.6f); p.delayOn = true; p.reverbOn = true; p.reverbMix = 0.2f; demos.push_back ({ "8_high_gain_delay_reverb.wav", p }); }
 
+    { auto p = base (0, 0.4f); p.wahOn = true; p.wahMode = 1; p.wahPosition = 0.7f; demos.push_back ({ "13_clean_auto_wah.wav", p }); }
+    { auto p = base (0, 0.4f); p.phaserOn = true; demos.push_back ({ "14_clean_phaser.wav", p }); }
+    { auto p = base (1, 0.55f); p.flangerOn = true; demos.push_back ({ "15_crunch_flanger.wav", p }); }
+    { auto p = base (0, 0.45f); p.tremOn = true; p.reverbOn = true; demos.push_back ({ "16_clean_tremolo_reverb.wav", p }); }
+
     // Bajo: el mismo riff una octava más grave
     const auto bassDry = syntheticRiff (fs, 0.5);
     auto bassBase = [] (int model, float gain, int cab) { fx::ChainParams p; p.ampModel = model; p.ampGain = gain; p.cabModel = cab; p.quality = 2; return p; };
@@ -590,6 +708,8 @@ void renderDemos (const juce::File& dir)
     demos.push_back ({ "10_bajo_bass_clean_compresor.wav", [&] { auto p = bassBase (7, 0.5f, 4); p.compOn = true; return p; }() });
     demos.push_back ({ "11_bajo_bass_rock_bass_drive.wav", [&] { auto p = bassBase (8, 0.5f, 3); p.odOn = true; p.odModel = 3; return p; }() });
     demos.push_back ({ "12_bajo_bass_fuzz.wav", [&] { auto p = bassBase (6, 0.4f, 3); p.fuzzOn = true; p.fuzzModel = 2; return p; }() });
+
+    demos.push_back ({ "17_bajo_octavador.wav", [&] { auto p = bassBase (6, 0.45f, 3); p.octOn = true; return p; }() });
 
     for (auto& d : demos)
     {
@@ -618,6 +738,7 @@ int main (int argc, char** argv)
     testLevels();
     testStability();
     testPedals();
+    testModulation();
 
     if (argc == 3 && juce::String (argv[1]) == "--render")
         renderDemos (juce::File::getCurrentWorkingDirectory().getChildFile (juce::String (argv[2])));
