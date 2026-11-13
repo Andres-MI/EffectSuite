@@ -307,9 +307,55 @@ void EffectSuiteEditor::PowerSwitch::paintButton (juce::Graphics& g, bool highli
     g.drawEllipse (juce::Rectangle<float> (m * 2.0f, m * 2.0f).withCentre (top.getCentre()), juce::jmax (1.0f, m * 0.4f));
 }
 
+void EffectSuiteEditor::RemoveButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
+{
+    const auto r = getLocalBounds().toFloat().reduced (1.0f);
+    const bool hot = highlighted || down;
+    g.setColour (juce::Colours::black.withAlpha (hot ? 0.85f : 0.3f));
+    g.fillEllipse (r);
+    g.setColour ((hot ? juce::Colour (0xffff6b6b) : juce::Colours::white).withAlpha (hot ? 1.0f : 0.6f));
+    const auto c = r.getCentre();
+    const float a = r.getWidth() * 0.2f;
+    const float t = juce::jmax (1.3f, r.getWidth() * 0.09f);
+    g.drawLine (c.x - a, c.y - a, c.x + a, c.y + a, t);
+    g.drawLine (c.x - a, c.y + a, c.x + a, c.y - a, t);
+}
+
+void EffectSuiteEditor::AddTile::paint (juce::Graphics& g)
+{
+    const auto r = getLocalBounds().toFloat().reduced (2.0f);
+    const float corner = 10.0f * scale;
+    const auto ink = hover ? accentColour : juce::Colour (0xff6d747e);
+
+    if (hover)
+    {
+        g.setColour (accentColour.withAlpha (0.08f));
+        g.fillRoundedRectangle (r, corner);
+    }
+
+    juce::Path outline, dashed;
+    outline.addRoundedRectangle (r, corner);
+    const float dashes[] = { 7.0f * scale + 2.0f, 5.0f * scale + 2.0f };
+    juce::PathStrokeType (1.5f).createDashedStroke (dashed, outline, dashes, 2);
+    g.setColour (ink);
+    g.fillPath (dashed);
+
+    const float d = juce::jmin (r.getWidth() * 0.2f, r.getHeight() * 0.11f);
+    const auto c = juce::Point<float> (r.getCentreX(), r.getCentreY() - r.getHeight() * 0.07f);
+    g.drawLine (c.x - d, c.y, c.x + d, c.y, juce::jmax (2.0f, d * 0.16f));
+    g.drawLine (c.x, c.y - d, c.x, c.y + d, juce::jmax (2.0f, d * 0.16f));
+
+    g.setFont (juce::FontOptions (smallFont (12.5f, scale), juce::Font::bold));
+    g.drawFittedText (juce::CharPointer_UTF8 ("A\xc3\xb1""adir pedal"),
+                      juce::Rectangle<int> ((int) r.getX() + 4, (int) (c.y + d + 12.0f * scale),
+                                            (int) r.getWidth() - 8, (int) (22.0f * scale)),
+                      juce::Justification::centred, 2, 0.7f);
+}
+
 //==============================================================================
 EffectSuiteEditor::Stompbox::Stompbox (EffectSuiteEditor& e, const PedalDef& def)
-    : editor (e), name (juce::CharPointer_UTF8 (def.name)), colour (def.colour), sliders (def.sliders)
+    : editor (e), name (juce::CharPointer_UTF8 (def.name)),
+      id (juce::String (def.onParamId).dropLastCharacters (2)), chipText (def.chip), colour (def.colour), sliders (def.sliders)
 {
     for (auto& k : def.knobs)
         knobs.push_back (editor.createKnob (*this, k.label, k.paramId, k.style, sliders));
@@ -326,6 +372,10 @@ EffectSuiteEditor::Stompbox::Stompbox (EffectSuiteEditor& e, const PedalDef& def
     addAndMakeVisible (footSwitch);
     switchAttachment = std::make_unique<ButtonAttachment> (editor.processor.apvts, def.onParamId, footSwitch);
 
+    removeButton.setTooltip (juce::CharPointer_UTF8 ("Quitar de la pedalera"));
+    removeButton.onClick = [this] { editor.removeFromBoard (id); };
+    addAndMakeVisible (removeButton);
+
     lastOn = footSwitch.getToggleState();
     refresh();
 
@@ -339,6 +389,21 @@ EffectSuiteEditor::Stompbox::Stompbox (EffectSuiteEditor& e, const PedalDef& def
             editor.blockStateChanged();
         }
     };
+}
+
+void EffectSuiteEditor::Stompbox::mouseDown (const juce::MouseEvent& e)
+{
+    if (! e.mods.isPopupMenu())
+        return;
+
+    juce::PopupMenu menu;
+    menu.addItem (1, juce::CharPointer_UTF8 ("Quitar de la pedalera"));
+    juce::Component::SafePointer<Stompbox> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options(), [safe] (int result)
+    {
+        if (result == 1 && safe != nullptr)
+            safe->editor.removeFromBoard (safe->id);
+    });
 }
 
 void EffectSuiteEditor::Stompbox::refresh()
@@ -396,6 +461,10 @@ void EffectSuiteEditor::Stompbox::resized()
     const float s = scale;
     auto r = getLocalBounds().reduced (juce::roundToInt (8 * s));
 
+    const int rb = juce::jmax (14, juce::roundToInt (16 * s));
+    removeButton.setBounds (getWidth() - rb - juce::roundToInt (4 * s), juce::roundToInt (4 * s), rb, rb);
+    r.removeFromTop (juce::roundToInt (10 * s));
+
     const int switchSize = juce::jmin (juce::roundToInt (58 * s), r.getWidth());
     footSwitch.setBounds (r.removeFromBottom (switchSize).withSizeKeepingCentre (switchSize, switchSize));
     ledArea = r.removeFromBottom (juce::roundToInt (22 * s));
@@ -439,7 +508,7 @@ void EffectSuiteEditor::Stompbox::resized()
         }
     }
 
-    const int maxKnob = juce::roundToInt (70 * s);
+    const int maxKnob = juce::roundToInt (78 * s);
     const int perRow = (n + bestRows - 1) / bestRows;
     const int cellW = r.getWidth() / perRow;
     const int rowH = r.getHeight() / bestRows;
@@ -815,7 +884,7 @@ void EffectSuiteEditor::FlowStrip::resized()
     const float endW = 34.0f * scale;       // "IN" / "OUT" captions
     r = r.reduced (endW, 0.0f);
 
-    const float cell = r.getWidth() / (float) chips.size();
+    const float cell = juce::jmin (160.0f * scale, r.getWidth() / (float) chips.size());
     const float arrow = juce::jmax (10.0f, 16.0f * scale);
     const float chipH = juce::jmin (r.getHeight() - 4.0f, 26.0f * scale);
 
@@ -924,25 +993,22 @@ EffectSuiteEditor::EffectSuiteEditor (EffectSuiteProcessor& p)
     flow = std::make_unique<FlowStrip>();
 
     for (auto& def : pre)
-    {
-        auto& pedal = *prePedals.emplace_back (std::make_unique<Stompbox> (*this, def));
-        addAndMakeVisible (pedal);
-        flow->addChip (def.chip, pedal.getColour(), pedal.getSwitch());
-    }
+        addAndMakeVisible (*prePedals.emplace_back (std::make_unique<Stompbox> (*this, def)));
 
     amp = std::make_unique<AmpUnit> (*this);
     cab = std::make_unique<CabUnit> (*this);
     addAndMakeVisible (*amp);
     addAndMakeVisible (*cab);
-    flow->addChip ("AMP", accentColour, amp->getSwitch());
-    flow->addChip ("CAB", juce::Colour (0xffd9b06a), cab->getSwitch());
 
     for (auto& def : post)
-    {
-        auto& pedal = *postPedals.emplace_back (std::make_unique<Stompbox> (*this, def));
-        addAndMakeVisible (pedal);
-        flow->addChip (def.chip, pedal.getColour(), pedal.getSwitch());
-    }
+        addAndMakeVisible (*postPedals.emplace_back (std::make_unique<Stompbox> (*this, def)));
+
+    addPre = std::make_unique<AddTile>();
+    addPost = std::make_unique<AddTile>();
+    addPre->onClick  = [this] { showAddMenu (true, *addPre); };
+    addPost->onClick = [this] { showAddMenu (false, *addPost); };
+    addAndMakeVisible (*addPre);
+    addAndMakeVisible (*addPost);
 
     addAndMakeVisible (*flow);
 
@@ -971,6 +1037,8 @@ EffectSuiteEditor::EffectSuiteEditor (EffectSuiteProcessor& p)
 
     addAndMakeVisible (inMeter);
     addAndMakeVisible (outMeter);
+
+    refreshBoard();
 
     setResizable (true, true);
     setResizeLimits (924, 630, 1980, 1350);
@@ -1045,6 +1113,95 @@ void EffectSuiteEditor::placeKnob (Knob& k, juce::Rectangle<int> cell, int label
     k.slider.setBounds (group.withSizeKeepingCentre (size, size));
 }
 
+void EffectSuiteEditor::refreshBoard()
+{
+    lastBoardRevision = processor.getBoardRevision();
+
+    bool preMissing = false, postMissing = false;
+    for (auto* row : { &prePedals, &postPedals })
+        for (auto& p : *row)
+        {
+            const bool on = processor.isOnBoard (p->getId());
+            p->setVisible (on);
+            (row == &prePedals ? preMissing : postMissing) |= ! on;
+        }
+    addPre->setVisible (preMissing);
+    addPost->setVisible (postMissing);
+
+    flow->clearChips();
+    auto addChips = [this] (std::vector<std::unique_ptr<Stompbox>>& row)
+    {
+        for (auto& p : row)
+            if (p->isVisible())
+                flow->addChip (p->getChipText(), p->getColour(), p->getSwitch());
+    };
+    addChips (prePedals);
+    flow->addChip ("AMP", accentColour, amp->getSwitch());
+    flow->addChip ("CAB", juce::Colour (0xffd9b06a), cab->getSwitch());
+    addChips (postPedals);
+
+    if (getWidth() > 0)
+    {
+        resized();
+        flow->resized();
+    }
+    repaint();
+}
+
+void EffectSuiteEditor::removeFromBoard (const juce::String& id)
+{
+    processor.setOnBoard (id, false);
+    refreshBoard();
+}
+
+void EffectSuiteEditor::showAddMenu (bool preRow, juce::Component& target)
+{
+    juce::PopupMenu menu;
+    juce::StringArray ids;
+
+    for (auto& p : preRow ? prePedals : postPedals)
+    {
+        if (processor.isOnBoard (p->getId()))
+            continue;
+
+        ids.add (p->getId());
+        auto label = p->getName().toLowerCase();
+        label = label.substring (0, 1).toUpperCase() + label.substring (1);
+
+        juce::Path swatch;
+        swatch.addRoundedRectangle (0.0f, 0.0f, 16.0f, 16.0f, 4.0f);
+        auto icon = std::make_unique<juce::DrawablePath>();
+        icon->setPath (swatch);
+        icon->setFill (p->getColour());
+
+        juce::PopupMenu::Item item (label);
+        item.setID (ids.size());
+        item.setImage (std::move (icon));
+        menu.addItem (std::move (item));
+    }
+
+    if (ids.isEmpty())
+        return;
+
+    juce::Component::SafePointer<EffectSuiteEditor> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&target),
+                        [safe, ids] (int result)
+    {
+        if (result < 1 || safe == nullptr)
+            return;
+
+        const auto& id = ids[result - 1];
+        safe->processor.setOnBoard (id, true);
+        if (auto* param = safe->processor.apvts.getParameter (id + "On"))
+        {
+            param->beginChangeGesture();
+            param->setValueNotifyingHost (1.0f);
+            param->endChangeGesture();
+        }
+        safe->refreshBoard();
+    });
+}
+
 void EffectSuiteEditor::blockStateChanged()
 {
     if (flow != nullptr)
@@ -1082,6 +1239,9 @@ void EffectSuiteEditor::timerCallback()
         updateTuner();
         repaint (tunerArea);
     }
+
+    if (processor.getBoardRevision() != lastBoardRevision)
+        refreshBoard();
 
     // The IR can also change through state restore
     if (processor.getImpulseResponseName() != cab->getShownIrName())
@@ -1229,21 +1389,37 @@ void EffectSuiteEditor::resized()
     area.removeFromBottom (pad);
     ampBoard = area;
 
-    auto layoutRow = [&] (std::vector<std::unique_ptr<Stompbox>>& pedals, juce::Rectangle<int> board)
+    auto layoutRow = [&] (std::vector<std::unique_ptr<Stompbox>>& pedals, AddTile& tile, juce::Rectangle<int> board)
     {
         auto r = board.reduced (px (6), px (5)).withTrimmedTop (captionH - px (3));
         const int gap = px (8);
-        const float w = (float) (r.getWidth() - gap * ((int) pedals.size() - 1)) / (float) pedals.size();
+        const float tileFrac = 0.65f;
+        const float maxW = (float) (r.getWidth() - gap * 5) / 6.0f;   // width of a pedal in a row of six
 
-        for (size_t i = 0; i < pedals.size(); ++i)
+        std::vector<Stompbox*> shown;
+        for (auto& p : pedals)
+            if (processor.isOnBoard (p->getId()))
+                shown.push_back (p.get());
+
+        const bool hasTile = shown.size() < pedals.size();
+        const int items = (int) shown.size() + (hasTile ? 1 : 0);
+        const float units = (float) shown.size() + (hasTile ? tileFrac : 0.0f);
+        const float w = juce::jmin (maxW, (float) (r.getWidth() - gap * (items - 1)) / units);
+
+        float x = (float) r.getX();
+        for (auto* p : shown)
         {
-            pedals[i]->scale = s;
-            pedals[i]->setBounds (juce::roundToInt ((float) r.getX() + (w + (float) gap) * (float) i), r.getY(),
-                                  juce::roundToInt (w), r.getHeight());
+            p->scale = s;
+            p->setBounds (juce::roundToInt (x), r.getY(), juce::roundToInt (w), r.getHeight());
+            x += w + (float) gap;
         }
+
+        tile.scale = s;
+        tile.setVisible (hasTile);
+        tile.setBounds (juce::roundToInt (x), r.getY(), juce::roundToInt (w * tileFrac), r.getHeight());
     };
-    layoutRow (prePedals, preBoard);
-    layoutRow (postPedals, postBoard);
+    layoutRow (prePedals, *addPre, preBoard);
+    layoutRow (postPedals, *addPost, postBoard);
 
     {
         auto r = ampBoard.reduced (px (6), px (5)).withTrimmedTop (captionH - px (3));

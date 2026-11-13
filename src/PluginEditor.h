@@ -70,6 +70,30 @@ private:
         void paintButton (juce::Graphics&, bool highlighted, bool down) override;
     };
 
+    /** Small round "x" in the corner of a pedal; subtle until hovered. */
+    class RemoveButton final : public juce::Button
+    {
+    public:
+        RemoveButton() : juce::Button ({}) { setMouseCursor (juce::MouseCursor::PointingHandCursor); }
+        void paintButton (juce::Graphics&, bool highlighted, bool down) override;
+    };
+
+    /** Dashed tile at the end of a pedal row that opens the "add pedal" menu. */
+    class AddTile final : public juce::Component
+    {
+    public:
+        AddTile() { setMouseCursor (juce::MouseCursor::PointingHandCursor); }
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override { if (onClick) onClick(); }
+        void mouseEnter (const juce::MouseEvent&) override { hover = true; repaint(); }
+        void mouseExit (const juce::MouseEvent&) override  { hover = false; repaint(); }
+
+        std::function<void()> onClick;
+        float scale = 1.0f;
+    private:
+        bool hover = false;
+    };
+
     /** One pedal: coloured enclosure, controls, name, LED and footswitch. */
     class Stompbox final : public juce::Component
     {
@@ -79,7 +103,11 @@ private:
         void paint (juce::Graphics&) override;
         void paintOverChildren (juce::Graphics&) override;
         void resized() override;
+        void mouseDown (const juce::MouseEvent&) override;
 
+        const juce::String& getId() const noexcept       { return id; }
+        const juce::String& getChipText() const noexcept { return chipText; }
+        const juce::String& getName() const noexcept     { return name; }
         juce::Button& getSwitch() noexcept      { return footSwitch; }
         juce::Colour getColour() const noexcept { return colour; }
 
@@ -89,13 +117,14 @@ private:
         void refresh();
 
         EffectSuiteEditor& editor;
-        juce::String name;
+        juce::String name, id, chipText;
         juce::Colour colour;
         bool sliders = false, hasCombo = false, lastOn = false;
 
         std::vector<std::unique_ptr<Knob>> knobs;
         juce::ComboBox combo;
         FootSwitch footSwitch;
+        RemoveButton removeButton;
         std::unique_ptr<ComboAttachment> comboAttachment;   // after the components
         std::unique_ptr<ButtonAttachment> switchAttachment;
 
@@ -168,6 +197,7 @@ private:
     class FlowStrip final : public juce::Component
     {
     public:
+        void clearChips() { chips.clear(); }
         void addChip (const juce::String& text, juce::Colour, juce::Button& target);
         void paint (juce::Graphics&) override;
         void resized() override;
@@ -195,6 +225,9 @@ private:
     void fillCombo (juce::ComboBox&, const juce::String& paramId);
     static void placeKnob (Knob&, juce::Rectangle<int> cell, int labelHeight, float fontSize, int maxKnobSize);
     void blockStateChanged();
+    void refreshBoard();
+    void removeFromBoard (const juce::String& id);
+    void showAddMenu (bool preRow, juce::Component& target);
     void updateTuner();
     float uiScale() const { return (float) getHeight() / 900.0f; }
 
@@ -212,6 +245,8 @@ private:
 
     // The rig. Each unit owns its controls and their attachments.
     std::vector<std::unique_ptr<Stompbox>> prePedals, postPedals;
+    std::unique_ptr<AddTile> addPre, addPost;
+    int lastBoardRevision = -1;
     std::unique_ptr<AmpUnit> amp;
     std::unique_ptr<CabUnit> cab;
     std::unique_ptr<FlowStrip> flow;                       // points at the units' switches: destroyed first
