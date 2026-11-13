@@ -236,9 +236,11 @@ public:
     void prepare (double sampleRate) noexcept
     {
         fs = sampleRate;
-        for (auto& b : bands) b.reset();
+        reset();
         update();
     }
+
+    void reset() noexcept { for (auto& b : bands) b.reset(); }
 
     /** Ganancias en dB, de -12 a +12. */
     void setControls (float low, float lowMid, float highMid, float high) noexcept

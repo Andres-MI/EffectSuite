@@ -43,6 +43,7 @@ public:
         fs = sampleRate;
         k = 1.0 / (2.0 * fs * Cf);
         lowLp.setCutoff (150.0, fs);
+        dcBlock.setCutoff (12.0, fs);
         level.prepare (fs);
         applyVoicing();
         reset();
@@ -53,6 +54,7 @@ public:
         inputHp.reset();
         toneLp.reset();
         lowLp.reset();
+        dcBlock.reset();
         v = fPrev = 0.0;
         level.snap (level.target);
     }
@@ -108,7 +110,8 @@ public:
         v = vn;
 
         // Salida del operacional = señal limpia + tensión recortada de la realimentación
-        const double wet = toneLp.lp (x + vn) + voicing->cleanBlend * x + voicing->lowBlend * lowLp.lp (x);
+        // El recorte asimétrico deja componente continua: se quita con un paso alto de 12 Hz
+        const double wet = dcBlock.hp (toneLp.lp (x + vn)) + voicing->cleanBlend * x + voicing->lowBlend * lowLp.lp (x);
         return wet * level.next();
     }
 
@@ -134,7 +137,7 @@ private:
     const OverdriveVoicing* voicing = &overdrives::midBoost;
     double fs = 48000.0, k = 0.0, Rf = 51e3, aPos = invNVt, aNeg = invNVt;
     double v = 0.0, fPrev = 0.0, tonePos = -1.0;
-    OnePole inputHp, toneLp, lowLp;
+    OnePole inputHp, toneLp, lowLp, dcBlock;
     Smoothed level;
 };
 }

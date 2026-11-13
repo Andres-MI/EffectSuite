@@ -39,6 +39,7 @@ public:
         fs = sampleRate;
         couplingHp.setCutoff (30.0, fs);
         rectifierHp.setCutoff (60.0, fs);
+        dcBlock.setCutoff (12.0, fs);
         lowLp.setCutoff (120.0, fs);
         gain.prepare (fs);
         level.prepare (fs);
@@ -48,7 +49,7 @@ public:
 
     void reset() noexcept
     {
-        inputHp.reset(); couplingHp.reset(); toneLp.reset(); lowLp.reset(); rectifierHp.reset();
+        inputHp.reset(); couplingHp.reset(); toneLp.reset(); lowLp.reset(); rectifierHp.reset(); dcBlock.reset();
         rectX = rectF = 0.0;
         first.reset(); second.reset();
         gain.snap (gain.target);
@@ -93,7 +94,7 @@ public:
 
         double y = first.process (u, bias1, tanhBias1);
         y = second.process (couplingHp.hp (y) * 3.0, bias2, tanhBias2);
-        return (toneLp.lp (y) + voicing->lowBlend * lowLp.lp (x)) * level.next();
+        return (dcBlock.hp (toneLp.lp (y)) + voicing->lowBlend * lowLp.lp (x)) * level.next();
     }
 
 private:
@@ -113,7 +114,7 @@ private:
 
     const FuzzVoicing* voicing = &fuzzes::vintage;
     double fs = 48000.0, toneControl = -1.0;
-    OnePole inputHp, couplingHp, toneLp, lowLp, rectifierHp;
+    OnePole inputHp, couplingHp, toneLp, lowLp, rectifierHp, dcBlock;
     double rectX = 0.0, rectF = 0.0;
     Saturator first, second;
     Smoothed gain, level;

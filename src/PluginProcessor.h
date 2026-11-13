@@ -4,7 +4,7 @@
 #include "dsp/PitchTracker.h"
 
 class EffectSuiteProcessor final : public juce::AudioProcessor,
-                                   private juce::AsyncUpdater
+                                   private juce::Timer
 {
 public:
     EffectSuiteProcessor();
@@ -60,7 +60,7 @@ public:
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
-    void handleAsyncUpdate() override;
+    void timerCallback() override;
     fx::ChainParams readParams() const;
 
     fx::GuitarChain chain;
@@ -68,6 +68,7 @@ private:
     juce::AudioBuffer<float> work;      // canal 0 = entrada mono, 1 y 2 = salida izquierda y derecha
     int maxBlock = 0;
     std::atomic<int> latencyQuality { -1 };
+    std::atomic<bool> latencyChanged { false };
     juce::File irFile, namFile;
     double namSampleRate = 0.0;
 

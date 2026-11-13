@@ -146,11 +146,13 @@ EffectSuiteProcessor::EffectSuiteProcessor()
                ref ("delayOn"), ref ("delayTime"), ref ("delayFeedback"), ref ("delayMix"),
                ref ("reverbOn"), ref ("reverbSize"), ref ("reverbMix"),
                ref ("outputLevel"), ref ("quality"), ref ("tunerMute") };
+
+    startTimerHz (10);
 }
 
 EffectSuiteProcessor::~EffectSuiteProcessor()
 {
-    cancelPendingUpdate();
+    stopTimer();
 }
 
 bool EffectSuiteProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -248,6 +250,7 @@ fx::ChainParams EffectSuiteProcessor::readParams() const
     p.cabOn           = params.cabOn->load() > 0.5f;
     p.outputDb        = params.outputLevel->load();
     p.quality         = (int) params.quality->load();
+    p.mute            = params.tunerMute->load() > 0.5f;
     return p;
 }
 
@@ -264,10 +267,10 @@ void EffectSuiteProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 
     const auto p = readParams();
     const int inputMode = (int) params.inputMode->load();
-    const bool mute = params.tunerMute->load() > 0.5f;
 
+    // El aviso de latencia al host se hace desde un temporizador: aquí no se puede bloquear
     if (p.quality != latencyQuality.exchange (p.quality))
-        triggerAsyncUpdate();
+        latencyChanged.store (true);
 
     float* m = work.getWritePointer (0);
     float* outL = work.getWritePointer (1);
@@ -293,12 +296,6 @@ void EffectSuiteProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 
         chain.process (m, outL, outR, n, p);
 
-        if (mute)
-        {
-            juce::FloatVectorOperations::clear (outL, n);
-            juce::FloatVectorOperations::clear (outR, n);
-        }
-
         for (const float* out : { outL, outR })
             outPeak = juce::jmax (outPeak, juce::FloatVectorOperations::findMaximum (out, n),
                                   -juce::FloatVectorOperations::findMinimum (out, n));
@@ -323,9 +320,10 @@ void EffectSuiteProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     if (outPeak > outputPeak.load (std::memory_order_relaxed)) outputPeak.store (outPeak, std::memory_order_relaxed);
 }
 
-void EffectSuiteProcessor::handleAsyncUpdate()
+void EffectSuiteProcessor::timerCallback()
 {
-    setLatencySamples (juce::roundToInt (chain.getLatencySamples (latencyQuality.load())));
+    if (latencyChanged.exchange (false))
+        setLatencySamples (juce::roundToInt (chain.getLatencySamples (latencyQuality.load())));
 }
 
 bool EffectSuiteProcessor::loadImpulseResponse (const juce::File& file)
@@ -416,9 +414,8 @@ void EffectSuiteProcessor::setStateInformation (const void* data, int sizeInByte
         const juce::String namPath = state.getProperty ("namFile").toString();
         apvts.replaceState (state);
 
-        if (path.isNotEmpty() && juce::File::isAbsolutePath (path) && juce::File (path).existsAsFile())
-            loadImpulseResponse (juce::File (path));
-        else
+        if (! (path.isNotEmpty() && juce::File::isAbsolutePath (path) && juce::File (path).existsAsFile()
+               && loadImpulseResponse (juce::File (path))))
             clearImpulseResponse();
 
         if (namPath.isEmpty() || ! juce::File::isAbsolutePath (namPath) || loadNeuralModel (juce::File (namPath)).isNotEmpty())

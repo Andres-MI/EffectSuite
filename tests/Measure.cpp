@@ -7,6 +7,7 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_dsp/juce_dsp.h>
 #include <chrono>
+#include <complex>
 #include <cstdio>
 #include <random>
 #include <vector>
@@ -64,6 +65,9 @@ std::vector<double> powerSpectrum (const float* x, int order)
     return p;
 }
 
+std::vector<float> syntheticRiff (double fs, double transpose);
+std::vector<float> syntheticRiffForLevels (double fs, double transpose) { return syntheticRiff (fs, transpose); }
+
 fx::ChainParams cleanParams()
 {
     fx::ChainParams p;
@@ -72,14 +76,61 @@ fx::ChainParams cleanParams()
 }
 
 //==============================================================================
+/** Respuesta del control de tonos resolviendo el circuito por análisis nodal, sin usar la
+    fórmula del modelo: es la referencia independiente contra la que se comprueba.
+
+    Nudos: A (tras C1), O (salida, cursor del potenciómetro de agudos), B (unión agudos/graves),
+    C (tras R4), D (unión graves/medios), W (cursor de medios, donde llega C3). */
+std::complex<double> toneStackCircuit (const fx::ToneStackValues& v, double bass, double mid, double treble, double hz)
+{
+    using cd = std::complex<double>;
+    const cd s (0.0, 2.0 * pi * hz);
+    const double l = std::exp ((bass - 1.0) * 3.4);
+    const double m = std::min (0.9999, std::max (0.0001, mid)), t = std::min (0.9999, std::max (0.0001, treble));
+
+    struct Element { int a, b; cd y; };     // admitancia entre los nudos a y b; 0 = entrada, -1 = masa
+    const Element elements[] {
+        { 0, 1, s * v.C1 }, { 1, 2, 1.0 / ((1.0 - t) * v.R1) }, { 2, 3, 1.0 / (t * v.R1) },
+        { 0, 4, 1.0 / v.R4 }, { 4, 3, s * v.C2 }, { 3, 5, 1.0 / (l * v.R2) },
+        { 5, 6, 1.0 / ((1.0 - m) * v.R3) }, { 6, -1, 1.0 / (m * v.R3) }, { 4, 6, s * v.C3 } };
+
+    cd Y[7][7] {};
+    for (auto& e : elements)
+    {
+        Y[e.a][e.a] += e.y;
+        if (e.b >= 0) { Y[e.b][e.b] += e.y; Y[e.a][e.b] -= e.y; Y[e.b][e.a] -= e.y; }
+    }
+
+    // Sistema 6x6 con la entrada fijada a 1 V; eliminación de Gauss con pivote
+    cd A[6][7];
+    for (int r = 0; r < 6; ++r) { for (int c = 0; c < 6; ++c) A[r][c] = Y[r + 1][c + 1]; A[r][6] = -Y[r + 1][0]; }
+
+    for (int col = 0; col < 6; ++col)
+    {
+        int best = col;
+        for (int r = col + 1; r < 6; ++r) if (std::abs (A[r][col]) > std::abs (A[best][col])) best = r;
+        for (int c = 0; c < 7; ++c) std::swap (A[col][c], A[best][c]);
+        for (int r = 0; r < 6; ++r)
+        {
+            if (r == col) continue;
+            const cd k = A[r][col] / A[col][col];
+            for (int c = col; c < 7; ++c) A[r][c] -= k * A[col][c];
+        }
+    }
+
+    return A[1][6] / A[1][1];       // nudo O
+}
+
+//==============================================================================
 void testToneStack()
 {
     std::printf ("\n1. Control de tonos: modelo digital frente al circuito analógico\n");
-    const fx::ToneStackValues* stacks[] { &fx::tonestacks::american, &fx::tonestacks::british, &fx::tonestacks::modern };
-    const char* names[] { "american", "british", "modern" };
+    const fx::ToneStackValues* stacks[] { &fx::tonestacks::american, &fx::tonestacks::british, &fx::tonestacks::modern,
+                                         &fx::tonestacks::tweed, &fx::tonestacks::chime, &fx::tonestacks::bass };
+    const char* names[] { "american", "british", "modern", "tweed", "chime", "bass" };
     double worst = 0.0, maxGain = 0.0;
 
-    for (int s = 0; s < 3; ++s)
+    for (int s = 0; s < 6; ++s)
     {
         fx::ToneStack ts;
         ts.setValues (*stacks[s]);
@@ -93,7 +144,7 @@ void testToneStack()
 
                     for (double f = 40.0; f < 10000.0; f *= 1.1)
                     {
-                        const double a = std::abs (ts.analogResponse (f)), d = std::abs (ts.digitalResponse (f));
+                        const double a = std::abs (toneStackCircuit (*stacks[s], b, m, t, f)), d = std::abs (ts.digitalResponse (f));
                         maxGain = std::max (maxGain, a);
                         if (a > 1e-4) worst = std::max (worst, std::abs (dB (a) - dB (d)));
                     }
@@ -105,8 +156,8 @@ void testToneStack()
                      dB (std::abs (ts.digitalResponse (3000.0))));
     }
 
-    std::printf ("   error máximo digital/analógico: %.3f dB, ganancia máxima: %.3f\n", worst, maxGain);
-    check (worst < 0.5, "el filtro digital sigue al circuito (< 0,5 dB entre 40 Hz y 10 kHz)");
+    std::printf ("   error máximo entre el filtro digital y el circuito: %.3f dB, ganancia máxima: %.3f\n", worst, maxGain);
+    check (worst < 0.5, "el filtro digital sigue al circuito resuelto por análisis nodal (< 0,5 dB entre 40 Hz y 10 kHz)");
     check (maxGain <= 1.0001, "red pasiva: nunca amplifica");
 
     // Proceso en el tiempo: la respuesta medida coincide con la calculada
@@ -191,9 +242,14 @@ void testAliasing()
             for (int b = bin; b < audible - 1; b += bin)
                 for (int k = -1; k <= 1; ++k) legit += spec[(size_t) (b + k)];
 
+            double fullTotal = 0.0, fullLegit = 0.0;
+            for (size_t b = 1; b < spec.size(); ++b) fullTotal += spec[b];
+            for (int b = bin; b < n / 2 - 1; b += bin)
+                for (int k = -1; k <= 1; ++k) fullLegit += spec[(size_t) (b + k)];
+
             alias[t][q] = 10.0 * std::log10 (std::max (total - legit, 1e-30) / total);
-            std::printf ("   tono de %4.0f Hz, sobremuestreo %dx: aliasing %6.1f dB respecto a la señal\n",
-                         bin * fs / n, 2 << q, alias[t][q]);
+            std::printf ("   tono de %4.0f Hz, sobremuestreo %dx: aliasing audible %6.1f dB (contando hasta 24 kHz: %6.1f dB)\n",
+                         bin * fs / n, 2 << q, alias[t][q], 10.0 * std::log10 (std::max (fullTotal - fullLegit, 1e-30) / fullTotal));
         }
 
     check (alias[0][1] < alias[0][0] && alias[0][2] < alias[0][1], "más sobremuestreo = menos aliasing");
@@ -316,6 +372,15 @@ void testGate()
     peak = 0.0;
     for (size_t i = 24000; i < tone.size(); ++i) peak = std::max (peak, (double) std::abs (tone[i]));
     check (std::abs (dB (peak) - dB (0.1)) < 0.2, "deja pasar la guitarra sin cambiar el nivel");
+
+    // Después de haber estado abierta tiene que volver a cerrarse, también con continua en la entrada
+    std::vector<float> tail (48000);
+    for (auto& v : tail) v = dist (rng) * 0.0001f + 0.001f;              // ruido de -80 dB + continua de -60 dB
+    runChain (chain, tail, p);
+    peak = 0.0;
+    for (size_t i = 36000; i < tail.size(); ++i) peak = std::max (peak, (double) std::abs (tail[i]));
+    std::printf ("   tras una nota, con ruido y continua de -60 dB: sale a %.1f dB\n", dB (peak));
+    check (peak < 1e-5, "se vuelve a cerrar tras una nota aunque haya continua en la entrada");
 }
 
 //==============================================================================
@@ -384,6 +449,7 @@ void testStability()
 
         const int n = 1 + (int) (u (rng) * 255.0f);
         const float amp = (b % 50 == 0) ? 4.0f : 0.5f;
+        p.outputDb = 12.0f * u (rng);
         for (int i = 0; i < n; ++i) block[(size_t) i] = amp * (2.0f * u (rng) - 1.0f);
         chain.process (block.data(), left.data(), right.data(), n, p);
         for (int i = 0; i < n; ++i)
@@ -395,7 +461,7 @@ void testStability()
 
     std::printf ("   pico máximo de salida: %.2f\n", peak);
     check (finite, "nunca produce NaN ni infinitos");
-    check (peak < 2000.0f, "la salida se mantiene acotada (sin realimentaciones que crezcan)");
+    check (peak <= 1.0f, "la salida nunca pasa de 0 dBFS, ni con todo al máximo");
 }
 
 //==============================================================================
@@ -678,8 +744,199 @@ void testNeural()
 }
 
 //==============================================================================
+/** Ajustes con casi todo encendido, para las pruebas de robustez. */
+fx::ChainParams busyParams()
+{
+    fx::ChainParams p;
+    p.gateOn = false; p.compOn = true; p.odOn = true; p.ampOn = true; p.ampModel = 1; p.cabOn = true;
+    p.eqOn = true; p.eqLowMid = 3.0f; p.chorusOn = true; p.delayOn = true; p.reverbOn = true; p.phaserOn = true;
+    return p;
+}
+
+void testRobustness()
+{
+    std::printf ("\n13. Robustez (casos encontrados por la revisión independiente)\n");
+    const double fs = 48000.0;
+
+    // El resultado no depende del tamaño de bloque
+    {
+        std::vector<float> reference;
+        double worst = 0.0;
+        for (int blockSize : { 64, 1, 7, 1024 })
+        {
+            fx::GuitarChain chain;
+            chain.prepare (fs, 1024);
+            auto x = sine (196.0, fs, 0.2, 24000);
+            runChain (chain, x, busyParams(), blockSize);
+            if (reference.empty()) reference = x;
+            else for (size_t i = 0; i < x.size(); ++i) worst = std::max (worst, (double) std::abs (x[i] - reference[i]));
+        }
+        std::printf ("   bloques de 1, 7, 64 y 1024 muestras: diferencia máxima %.2e\n", worst);
+        check (worst < 1e-4, "el sonido no depende del tamaño de bloque");
+    }
+
+    // Reactivar un bloque no hace sonar restos de la última vez
+    {
+        bool ok = true;
+        double worst = 0.0;
+        for (int which = 0; which < 5; ++which)
+        {
+            auto set = [which] (fx::ChainParams& p, bool on)
+            {
+                if (which == 0) p.odOn = on; else if (which == 1) p.delayOn = on; else if (which == 2) p.reverbOn = on;
+                else if (which == 3) { p.ampOn = on; p.cabOn = on; } else p.fuzzOn = on;
+            };
+            fx::GuitarChain chain;
+            chain.prepare (fs, 64);
+            auto p = cleanParams();
+            set (p, true);
+            if (which == 1) p.delayFeedback = 0.8f;
+            auto loud = sine (220.0, fs, 0.3, 48000);
+            runChain (chain, loud, p);
+            set (p, false);
+            std::vector<float> silence (4800, 0.0f);
+            runChain (chain, silence, p);
+            set (p, true);
+            std::vector<float> after (48000, 0.0f);
+            runChain (chain, after, p);
+            double peak = 0.0;
+            for (float v : after) peak = std::max (peak, (double) std::abs (v));
+            worst = std::max (worst, peak);
+            ok = ok && peak < 1e-4;
+        }
+        std::printf ("   bloque apagado y vuelto a encender en silencio: residuo máximo %.1f dBFS\n", dB (worst));
+        check (ok, "al reactivar un bloque no suena nada de la vez anterior");
+    }
+
+    // Conmutar bloques y modelos en mitad de una nota no da chasquidos
+    {
+        struct Switch { const char* name; void (*apply) (fx::ChainParams&); };
+        const Switch switches[] {
+            { "overdrive on", [] (fx::ChainParams& p) { p.odOn = ! p.odOn; } },
+            { "ampli off", [] (fx::ChainParams& p) { p.ampOn = false; } },
+            { "pantalla off", [] (fx::ChainParams& p) { p.cabOn = false; } },
+            { "modelo de ampli", [] (fx::ChainParams& p) { p.ampModel = 2; } },
+            { "modelo de pantalla", [] (fx::ChainParams& p) { p.cabModel = 3; } },
+            { "calidad", [] (fx::ChainParams& p) { p.quality = 2; } },
+            { "silenciar", [] (fx::ChainParams& p) { p.mute = true; } } };
+        double worstRatio = 0.0;
+        const char* worstName = "";
+
+        for (auto& sw : switches)
+        {
+            fx::GuitarChain chain;
+            chain.prepare (fs, 64);
+            fx::ChainParams p;
+            p.gateOn = false; p.ampModel = 1;
+            auto x = sine (220.0, fs, 0.2, 48000);
+            std::vector<float> first (x.begin(), x.begin() + 24000), second (x.begin() + 24000, x.end());
+            runChain (chain, first, p);
+            double baseline = 0.0;
+            for (size_t i = 12001; i < first.size(); ++i) baseline = std::max (baseline, (double) std::abs (first[i] - first[i - 1]));
+            const float last = first.back();
+            sw.apply (p);
+            runChain (chain, second, p);
+            double jump = std::abs (second[0] - last);
+            for (size_t i = 1; i < 2400; ++i) jump = std::max (jump, (double) std::abs (second[i] - second[i - 1]));
+            // Se compara con el mayor salto normal entre muestras, antes y después del cambio
+            double after = 0.0;
+            for (size_t i = 12001; i < second.size(); ++i) after = std::max (after, (double) std::abs (second[i] - second[i - 1]));
+            const double ratio = jump / std::max ({ baseline, after, 1e-6 });
+            if (ratio > worstRatio) { worstRatio = ratio; worstName = sw.name; }
+        }
+        std::printf ("   mayor salto al conmutar: %.2f veces el salto normal de la señal (%s)\n", worstRatio, worstName);
+        check (worstRatio < 1.5, "encender, apagar o cambiar de modelo en mitad de una nota no da chasquido");
+    }
+
+    // Una muestra no válida no deja la cadena muda
+    {
+        fx::GuitarChain chain;
+        chain.prepare (fs, 64);
+        auto p = busyParams();
+        p.fuzzOn = true; p.distOn = true; p.wahOn = true; p.octOn = true;
+        auto x = sine (220.0, fs, 0.2, 96000);
+        x[1000] = std::numeric_limits<float>::quiet_NaN();
+        x[2000] = std::numeric_limits<float>::infinity();
+        std::vector<float> right;
+        runChain (chain, x, p, 64, &right);
+        bool finite = true;
+        double late = 0.0;
+        for (size_t i = 0; i < x.size(); ++i) finite = finite && std::isfinite (x[i]) && std::isfinite (right[i]);
+        for (size_t i = 72000; i < x.size(); ++i) late = std::max (late, (double) std::abs (x[i]));
+        check (finite && late > 1e-3, "tras un NaN o un infinito a la entrada, la salida sigue siendo válida y vuelve a sonar");
+    }
+
+    // Niveles: parecidos entre amplis, nunca por encima de 0 dBFS y sin componente continua
+    {
+        double lo = 1e9, hi = -1e9, maxPeak = 0.0, maxDc = 0.0;
+        for (int model = 0; model < fx::voicings::count; ++model)
+        {
+            fx::GuitarChain chain;
+            chain.prepare (fs, 64);
+            fx::ChainParams p;
+            p.gateOn = false; p.ampModel = model; p.cabModel = model >= 6 ? 3 : 0;
+            auto x = syntheticRiffForLevels (fs, model >= 6 ? 0.5 : 1.0);
+            runChain (chain, x, p);
+            double sum = 0.0;
+            for (float v : x) sum += (double) v * v;
+            const double rms = dB (std::sqrt (sum / (double) x.size()));
+            lo = std::min (lo, rms); hi = std::max (hi, rms);
+            std::printf ("      %-15s %6.1f dBFS\n", fx::voicings::all[model]->name, rms);
+
+            fx::GuitarChain loud;
+            loud.prepare (fs, 64);
+            p.ampGain = p.ampMaster = p.ampBass = p.ampMid = p.ampTreble = p.ampPresence = 1.0f; p.inputGainDb = 24.0f; p.outputDb = 12.0f;
+            auto y = sine (110.0, fs, 1.0, 24000);
+            runChain (loud, y, p);
+            for (float v : y) maxPeak = std::max (maxPeak, (double) std::abs (v));
+        }
+        for (int which = 0; which < fx::overdrives::count + fx::fuzzes::count; ++which)
+        {
+            fx::GuitarChain chain;
+            chain.prepare (fs, 64);
+            auto p = cleanParams();
+            const bool od = which < fx::overdrives::count;
+            p.odOn = od; p.fuzzOn = ! od; p.odModel = which; p.fuzzModel = which - fx::overdrives::count; p.odDrive = 1.0f; p.fuzzAmount = 1.0f;
+            auto x = sine (220.0, fs, 0.3, 96000);
+            runChain (chain, x, p);
+            double mean = 0.0;
+            for (size_t i = 48000; i < x.size(); ++i) mean += x[i];
+            maxDc = std::max (maxDc, std::abs (mean / 48000.0));
+        }
+        std::printf ("   nivel RMS entre los %d amplis con un riff: de %.1f a %.1f dBFS (%.1f dB de diferencia)\n", fx::voicings::count, lo, hi, hi - lo);
+        std::printf ("   pico con todo al máximo: %.2f dBFS; continua máxima con overdrive o fuzz sin ampli: %.5f\n", dB (maxPeak), maxDc);
+        check (hi - lo < 6.0, "los amplis salen a niveles parecidos (menos de 6 dB entre el más flojo y el más fuerte)");
+        check (maxPeak <= 1.0, "con todo al máximo la salida no pasa de 0 dBFS");
+        check (maxDc < 0.002, "los pedales no dejan componente continua en la salida");
+    }
+
+    // Otras frecuencias de muestreo
+    {
+        bool ok = true;
+        for (double rate : { 44100.0, 88200.0, 96000.0, 192000.0 })
+        {
+            fx::GuitarChain chain;
+            chain.prepare (rate, 256);
+            auto p = busyParams();
+            p.quality = 2;
+            auto x = sine (220.0, rate, 0.2, (size_t) rate);
+            const auto t0 = std::chrono::steady_clock::now();
+            runChain (chain, x, p, 256);
+            const double cpu = 100.0 * std::chrono::duration<double> (std::chrono::steady_clock::now() - t0).count();
+            double peak = 0.0;
+            bool finite = true;
+            for (size_t i = x.size() / 2; i < x.size(); ++i) { finite = finite && std::isfinite (x[i]); peak = std::max (peak, (double) std::abs (x[i])); }
+            std::printf ("   %6.0f Hz, calidad High: pico %.1f dBFS, %.0f %% de un núcleo (sobremuestreo real %dx)\n",
+                         rate, dB (peak), cpu, 2 << chain.oversamplerIndex (2));
+            ok = ok && finite && peak > 0.01 && cpu < 60.0;
+        }
+        check (ok, "funciona de 44,1 a 192 kHz sin pasar del 60 % de un núcleo");
+    }
+}
+
+//==============================================================================
 /** Cuerda pulsada sintética (Karplus-Strong) para oír los modelos sin una guitarra real. */
-std::vector<float> syntheticRiff (double fs, double transpose = 1.0)
+std::vector<float> syntheticRiff (double fs, double transpose)
 {
     struct Note { double start, hz; };
     std::vector<Note> notes;
@@ -739,7 +996,7 @@ void renderDemos (const juce::File& dir)
     std::printf ("\nDemostraciones de audio (guitarra sintética)\n");
     dir.createDirectory();
     const double fs = 48000.0;
-    const auto dry = syntheticRiff (fs);
+    const auto dry = syntheticRiff (fs, 1.0);
     writeWav (dir.getChildFile ("0_entrada_sin_procesar.wav"), dry, dry, fs);
 
     auto base = [] (int model, float gain) { fx::ChainParams p; p.ampModel = model; p.ampGain = gain; p.quality = 2; return p; };
@@ -798,6 +1055,7 @@ int main (int argc, char** argv)
     testPedals();
     testModulation();
     testNeural();
+    testRobustness();
 
     if (argc == 3 && juce::String (argv[1]) == "--render")
         renderDemos (juce::File::getCurrentWorkingDirectory().getChildFile (juce::String (argv[2])));
