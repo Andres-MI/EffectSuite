@@ -11,6 +11,12 @@ APVTS::ParameterLayout EffectSuiteProcessor::createLayout()
     using Range = juce::NormalisableRange<float>;
 
     APVTS::ParameterLayout layout;
+    auto names = [] (auto& voicings)
+    {
+        juce::StringArray list;
+        for (auto* v : voicings) list.add (v->name);
+        return list;
+    };
     auto id = [] (const char* name) { return juce::ParameterID { name, 1 }; };
     auto knob = [&] (const char* name, const char* label, float def)
     {
@@ -32,26 +38,25 @@ APVTS::ParameterLayout EffectSuiteProcessor::createLayout()
     knob ("compLevel", "Compressor Level", 0.5f);
 
     layout.add (std::make_unique<Bool> (id ("odOn"), "Overdrive On", false));
+    layout.add (std::make_unique<Choice> (id ("odModel"), "Overdrive Model", names (fx::overdrives::all), 0));
     knob ("odDrive", "Overdrive Drive", 0.5f);
     knob ("odTone", "Overdrive Tone", 0.5f);
     knob ("odLevel", "Overdrive Level", 0.7f);
 
     layout.add (std::make_unique<Bool> (id ("distOn"), "Distortion On", false));
+    layout.add (std::make_unique<Choice> (id ("distModel"), "Distortion Model", names (fx::distortions::all), 0));
     knob ("distGain", "Distortion Gain", 0.5f);
     knob ("distTone", "Distortion Tone", 0.5f);
     knob ("distLevel", "Distortion Level", 0.5f);
 
     layout.add (std::make_unique<Bool> (id ("fuzzOn"), "Fuzz On", false));
+    layout.add (std::make_unique<Choice> (id ("fuzzModel"), "Fuzz Model", names (fx::fuzzes::all), 0));
     knob ("fuzzAmount", "Fuzz Amount", 0.6f);
     knob ("fuzzTone", "Fuzz Tone", 0.5f);
     knob ("fuzzLevel", "Fuzz Level", 0.5f);
 
-    juce::StringArray models;
-    for (auto* v : fx::voicings::all)
-        models.add (v->name);
-
     layout.add (std::make_unique<Bool> (id ("ampOn"), "Amp On", true));
-    layout.add (std::make_unique<Choice> (id ("ampModel"), "Amp Model", models, 0));
+    layout.add (std::make_unique<Choice> (id ("ampModel"), "Amp Model", names (fx::voicings::all), 0));
     knob ("ampGain", "Amp Gain", 0.5f);
     knob ("ampBass", "Amp Bass", 0.5f);
     knob ("ampMid", "Amp Mid", 0.5f);
@@ -60,6 +65,8 @@ APVTS::ParameterLayout EffectSuiteProcessor::createLayout()
     knob ("ampMaster", "Amp Master", 0.5f);
 
     layout.add (std::make_unique<Bool> (id ("cabOn"), "Cabinet On", true));
+    layout.add (std::make_unique<Choice> (id ("cabModel"), "Cabinet Model",
+                                          juce::StringArray (fx::GuitarChain::cabNames, fx::GuitarChain::numCabs), 0));
     layout.add (std::make_unique<Bool> (id ("chorusOn"), "Chorus On", false));
     knob ("chorusRate", "Chorus Rate", 0.3f);
     knob ("chorusDepth", "Chorus Depth", 0.5f);
@@ -94,12 +101,12 @@ EffectSuiteProcessor::EffectSuiteProcessor()
 
     params = { ref ("inputGain"), ref ("inputMode"), ref ("gateOn"), ref ("gateThreshold"),
                ref ("compOn"), ref ("compSustain"), ref ("compAttack"), ref ("compLevel"),
-               ref ("odOn"), ref ("odDrive"), ref ("odTone"), ref ("odLevel"),
-               ref ("distOn"), ref ("distGain"), ref ("distTone"), ref ("distLevel"),
-               ref ("fuzzOn"), ref ("fuzzAmount"), ref ("fuzzTone"), ref ("fuzzLevel"),
+               ref ("odOn"), ref ("odModel"), ref ("odDrive"), ref ("odTone"), ref ("odLevel"),
+               ref ("distOn"), ref ("distModel"), ref ("distGain"), ref ("distTone"), ref ("distLevel"),
+               ref ("fuzzOn"), ref ("fuzzModel"), ref ("fuzzAmount"), ref ("fuzzTone"), ref ("fuzzLevel"),
                ref ("ampOn"), ref ("ampModel"), ref ("ampGain"), ref ("ampBass"), ref ("ampMid"),
                ref ("ampTreble"), ref ("ampPresence"), ref ("ampMaster"),
-               ref ("cabOn"),
+               ref ("cabOn"), ref ("cabModel"),
                ref ("chorusOn"), ref ("chorusRate"), ref ("chorusDepth"), ref ("chorusMix"),
                ref ("delayOn"), ref ("delayTime"), ref ("delayFeedback"), ref ("delayMix"),
                ref ("reverbOn"), ref ("reverbSize"), ref ("reverbMix"),
@@ -164,6 +171,10 @@ fx::ChainParams EffectSuiteProcessor::readParams() const
     p.reverbOn        = params.reverbOn->load() > 0.5f;
     p.reverbSize      = params.reverbSize->load();
     p.reverbMix       = params.reverbMix->load();
+    p.odModel         = (int) params.odModel->load();
+    p.distModel       = (int) params.distModel->load();
+    p.fuzzModel       = (int) params.fuzzModel->load();
+    p.cabModel        = (int) params.cabModel->load();
     p.odOn            = params.odOn->load() > 0.5f;
     p.odDrive         = params.odDrive->load();
     p.odTone          = params.odTone->load();

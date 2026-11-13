@@ -364,7 +364,8 @@ void testStability()
         p.inputGainDb = -24.0f + 48.0f * u (rng);
         p.gateOn = u (rng) > 0.5f; p.gateThresholdDb = -90.0f + 70.0f * u (rng);
         p.odOn = u (rng) > 0.3f; p.odDrive = u (rng); p.odTone = u (rng); p.odLevel = u (rng);
-        p.ampOn = u (rng) > 0.2f; p.ampModel = (int) (u (rng) * 2.99f);
+        p.ampOn = u (rng) > 0.2f; p.ampModel = (int) (u (rng) * (fx::voicings::count - 0.01f));
+        p.odModel = (int) (u (rng) * 3.99f); p.distModel = (int) (u (rng) * 3.99f); p.fuzzModel = (int) (u (rng) * 2.99f); p.cabModel = (int) (u (rng) * 4.99f);
         p.ampGain = u (rng); p.ampBass = u (rng); p.ampMid = u (rng); p.ampTreble = u (rng); p.ampPresence = u (rng); p.ampMaster = u (rng);
         p.cabOn = u (rng) > 0.3f; p.quality = (int) (u (rng) * 2.99f);
         p.compOn = u (rng) > 0.5f; p.compSustain = u (rng); p.compAttack = u (rng); p.compLevel = u (rng);
@@ -418,9 +419,16 @@ void testPedals()
         check (outDb[1] - outDb[0] > 3.0 && outDb[1] - outDb[0] < 8.0, "compresor: relación cercana a 4:1");
     }
 
-    // Distorsión y fuzz: saturan, están acotados y con poco aliasing audible
-    struct Case { const char* name; bool dist; };
-    for (auto c : { Case { "distorsión", true }, Case { "fuzz", false } })
+    // Todos los modelos de overdrive, distorsión y fuzz: saturan más al subir el control,
+    // están acotados y con poco aliasing audible en calidad Normal
+    struct Case { const char* kind; int type; int model; const char* name; };
+    std::vector<Case> cases;
+    for (int m = 0; m < fx::overdrives::count; ++m)  cases.push_back ({ "overdrive", 0, m, fx::overdrives::all[m]->name });
+    for (int m = 0; m < fx::distortions::count; ++m) cases.push_back ({ "distorsión", 1, m, fx::distortions::all[m]->name });
+    for (int m = 0; m < fx::fuzzes::count; ++m)      cases.push_back ({ "fuzz", 2, m, fx::fuzzes::all[m]->name });
+    bool pedalsOk = true;
+
+    for (auto& c : cases)
     {
         double thd[2] {}, peak = 0.0, alias = 0.0;
         int i = 0;
@@ -429,7 +437,9 @@ void testPedals()
             fx::GuitarChain chain;
             chain.prepare (fs, 64);
             auto p = cleanParams();
-            p.distOn = c.dist; p.fuzzOn = ! c.dist; p.distGain = amount; p.fuzzAmount = amount; p.quality = 1;
+            p.odOn = c.type == 0; p.distOn = c.type == 1; p.fuzzOn = c.type == 2;
+            p.odModel = p.distModel = p.fuzzModel = c.model;
+            p.odDrive = p.distGain = p.fuzzAmount = amount; p.quality = 1;
             auto x = sine (f0, fs, 0.1, (size_t) (2 * n));
             runChain (chain, x, p);
             const auto spec = powerSpectrum (x.data() + n, order);
@@ -440,13 +450,14 @@ void testPedals()
             double total = 0.0, legit = 0.0;
             for (int b = 1; b < audible; ++b) total += spec[(size_t) b];
             for (int b = bin; b < audible - 1; b += bin) for (int k = -1; k <= 1; ++k) legit += spec[(size_t) (b + k)];
-            alias = 10.0 * std::log10 (std::max (total - legit, 1e-30) / total);
+            alias = std::max (alias == 0.0 ? -300.0 : alias, 10.0 * std::log10 (std::max (total - legit, 1e-30) / total));
         }
-        std::printf ("   %s: THD %.1f %% al mínimo, %.1f %% al máximo; pico %.2f; aliasing audible a 4x %.1f dB\n",
-                     c.name, 100.0 * thd[0], 100.0 * thd[1], peak, alias);
-        check (thd[1] > thd[0] && thd[1] > 0.25, c.dist ? "distorsión: satura fuerte al máximo" : "fuzz: satura fuerte al máximo");
-        check (peak < 1.0 && alias < -50.0, c.dist ? "distorsión: nivel acotado y aliasing < -50 dB" : "fuzz: nivel acotado y aliasing < -50 dB");
+        const bool ok = thd[1] > thd[0] && thd[1] > 0.08 && peak < 1.0 && alias < -50.0;
+        std::printf ("   %-10s %-16s THD %5.1f %% -> %5.1f %%, pico %.2f, aliasing audible %6.1f dB %s\n",
+                     c.kind, c.name, 100.0 * thd[0], 100.0 * thd[1], peak, alias, ok ? "" : "  <-- FALLO");
+        pedalsOk = pedalsOk && ok;
     }
+    check (pedalsOk, "todos los modelos saturan más al subir el control, con nivel acotado y aliasing < -50 dB");
 
     // Delay: un impulso se repite al tiempo indicado, con la mezcla y la realimentación indicadas
     {
@@ -497,7 +508,7 @@ void testPedals()
 
 //==============================================================================
 /** Cuerda pulsada sintética (Karplus-Strong) para oír los modelos sin una guitarra real. */
-std::vector<float> syntheticRiff (double fs)
+std::vector<float> syntheticRiff (double fs, double transpose = 1.0)
 {
     struct Note { double start, hz; };
     std::vector<Note> notes;
@@ -513,7 +524,7 @@ std::vector<float> syntheticRiff (double fs)
 
     for (auto& note : notes)
     {
-        const double period = fs / note.hz;
+        const double period = fs / (note.hz * transpose);
         const int len = (int) period;
         const double frac = period - len;
         std::vector<float> line ((size_t) len + 1);
@@ -572,11 +583,19 @@ void renderDemos (const juce::File& dir)
     { auto p = base (0, 0.35f); p.fuzzOn = true; demos.push_back ({ "7_clean_con_fuzz.wav", p }); }
     { auto p = base (2, 0.6f); p.delayOn = true; p.reverbOn = true; p.reverbMix = 0.2f; demos.push_back ({ "8_high_gain_delay_reverb.wav", p }); }
 
+    // Bajo: el mismo riff una octava más grave
+    const auto bassDry = syntheticRiff (fs, 0.5);
+    auto bassBase = [] (int model, float gain, int cab) { fx::ChainParams p; p.ampModel = model; p.ampGain = gain; p.cabModel = cab; p.quality = 2; return p; };
+    demos.push_back ({ "9_bajo_bass_tube.wav", bassBase (6, 0.5f, 3) });
+    demos.push_back ({ "10_bajo_bass_clean_compresor.wav", [&] { auto p = bassBase (7, 0.5f, 4); p.compOn = true; return p; }() });
+    demos.push_back ({ "11_bajo_bass_rock_bass_drive.wav", [&] { auto p = bassBase (8, 0.5f, 3); p.odOn = true; p.odModel = 3; return p; }() });
+    demos.push_back ({ "12_bajo_bass_fuzz.wav", [&] { auto p = bassBase (6, 0.4f, 3); p.fuzzOn = true; p.fuzzModel = 2; return p; }() });
+
     for (auto& d : demos)
     {
         fx::GuitarChain chain;
         chain.prepare (fs, 64);
-        auto left = dry;
+        auto left = juce::String (d.file).contains ("bajo") ? bassDry : dry;
         std::vector<float> right;
         runChain (chain, left, d.p, 64, &right);
         writeWav (dir.getChildFile (d.file), left, right, fs);

@@ -44,8 +44,46 @@ namespace voicings
         3, tonestacks::modern, 4.0, 100.0, 0.002, 1.5, 0.12, 0.22
     };
 
-    inline constexpr const AmpVoicing* all[] { &cleanAmerican, &britishCrunch, &highGain };
-    inline constexpr int count = 3;
+    inline constexpr AmpVoicing tweed {
+        "Tweed", 3,
+        { 1.5, 10.0, 2.5, 0 }, { 0.30, 0.30, 0.15, 0 }, { 25.0, 30.0, 20.0, 0 }, { 12000.0, 9000.0, 10000.0, 0 },
+        2, tonestacks::tweed, 4.0, 30.0, 0.02, 2.2, 0.30, 0.3
+    };
+
+    inline constexpr AmpVoicing classAChime {
+        "Class A Chime", 2,
+        { 1.5, 8.0, 0, 0 }, { 0.30, 0.25, 0, 0 }, { 60.0, 40.0, 0, 0 }, { 16000.0, 13000.0, 0, 0 },
+        0, tonestacks::chime, 5.0, 50.0, 0.04, 2.8, 0.35, 0.4
+    };
+
+    inline constexpr AmpVoicing modernLead {
+        "Modern Lead", 4,
+        { 1.5, 70.0, 20.0, 4.0 }, { 0.25, 0.30, 0.25, 0.15 }, { 180.0, 90.0, 45.0, 25.0 }, { 8500.0, 6500.0, 6000.0, 7500.0 },
+        3, tonestacks::british, 4.0, 70.0, 0.002, 1.2, 0.18, 0.22
+    };
+
+    inline constexpr AmpVoicing bassTube {
+        "Bass Tube", 3,
+        { 1.2, 6.0, 2.5, 0 }, { 0.20, 0.25, 0.10, 0 }, { 12.0, 12.0, 10.0, 0 }, { 9000.0, 7000.0, 7000.0, 0 },
+        0, tonestacks::bass, 6.0, 18.0, 0.03, 1.6, 0.25, 0.45
+    };
+
+    inline constexpr AmpVoicing bassClean {
+        "Bass Clean", 2,
+        { 0.6, 3.0, 0, 0 }, { 0.05, 0.05, 0, 0 }, { 10.0, 10.0, 0, 0 }, { 16000.0, 14000.0, 0, 0 },
+        0, tonestacks::bass, 6.0, 15.0, 0.08, 1.0, 0.0, 2.8
+    };
+
+    inline constexpr AmpVoicing bassRock {
+        "Bass Rock", 3,
+        { 1.5, 20.0, 3.0, 0 }, { 0.30, 0.35, 0.15, 0 }, { 25.0, 20.0, 12.0, 0 }, { 8000.0, 6000.0, 6500.0, 0 },
+        2, tonestacks::bass, 6.0, 25.0, 0.01, 2.0, 0.25, 0.25
+    };
+
+    // El orden es el del parámetro guardado en los presets: añadir siempre al final.
+    inline constexpr const AmpVoicing* all[] { &cleanAmerican, &britishCrunch, &highGain, &tweed, &classAChime,
+                                               &modernLead, &bassTube, &bassClean, &bassRock };
+    inline constexpr int count = 9;
 }
 
 /** Amplificador de válvulas: previo multietapa, control de tonos de circuito y etapa de potencia con sag. */

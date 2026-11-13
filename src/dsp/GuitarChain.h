@@ -18,15 +18,19 @@ struct ChainParams
     bool  compOn = false;
     float compSustain = 0.5f, compAttack = 0.3f, compLevel = 0.5f;
     bool  odOn = false;
+    int   odModel = 0;
     float odDrive = 0.5f, odTone = 0.5f, odLevel = 0.7f;
     bool  distOn = false;
+    int   distModel = 0;
     float distGain = 0.5f, distTone = 0.5f, distLevel = 0.5f;
     bool  fuzzOn = false;
+    int   fuzzModel = 0;
     float fuzzAmount = 0.6f, fuzzTone = 0.5f, fuzzLevel = 0.5f;
     bool  ampOn = true;
     int   ampModel = 0;
     float ampGain = 0.5f, ampBass = 0.5f, ampMid = 0.5f, ampTreble = 0.5f, ampPresence = 0.5f, ampMaster = 0.5f;
     bool  cabOn = true;
+    int   cabModel = 0;
     bool  chorusOn = false;
     float chorusRate = 0.3f, chorusDepth = 0.5f, chorusMix = 0.6f;
     bool  delayOn = false;
@@ -48,6 +52,9 @@ struct ChainParams
 class GuitarChain
 {
 public:
+    static constexpr int numCabs = 5;
+    static constexpr const char* cabNames[numCabs] { "Guitar 4x12", "Guitar 2x12 Open", "Guitar 1x12", "Bass 8x10", "Bass 1x15" };
+
     GuitarChain()
     {
         using OS = juce::dsp::Oversampling<float>;
@@ -81,17 +88,22 @@ public:
         convolution.prepare (spec);
 
         using Coefs = juce::dsp::IIR::Coefficients<float>;
-        cabFilters[0].coefficients = Coefs::makeHighPass (fs, 80.0f, 0.8f);
-        cabFilters[1].coefficients = Coefs::makePeakFilter (fs, 110.0f, 1.0f, juce::Decibels::decibelsToGain (3.0f));
-        cabFilters[2].coefficients = Coefs::makePeakFilter (fs, 450.0f, 1.0f, juce::Decibels::decibelsToGain (-3.0f));
-        cabFilters[3].coefficients = Coefs::makePeakFilter (fs, 2600.0f, 1.5f, juce::Decibels::decibelsToGain (5.0f));
-        cabFilters[4].coefficients = Coefs::makeLowPass (fs, juce::jmin (5200.0f, 0.45f * (float) fs), 0.9f);
-        cabFilters[5].coefficients = Coefs::makeLowPass (fs, juce::jmin (6500.0f, 0.45f * (float) fs), 0.7f);
+        const float f = (float) fs, top = 0.45f * f;
+        auto peak = [f] (float hz, float q, float db) { return Coefs::makePeakFilter (f, hz, q, juce::Decibels::decibelsToGain (db)); };
+        auto low = [f, top] (float hz, float q) { return Coefs::makeLowPass (f, juce::jmin (hz, top), q); };
+        auto high = [f] (float hz, float q) { return Coefs::makeHighPass (f, hz, q); };
 
-        for (auto& f : cabFilters)
+        // Pantallas integradas: paso alto, tres resonancias y caída de agudos del altavoz
+        cabFilters[0] = { high (80.0f, 0.8f), peak (110.0f, 1.0f, 3.0f), peak (450.0f, 1.0f, -3.0f), peak (2600.0f, 1.5f, 5.0f), low (5200.0f, 0.9f), low (6500.0f, 0.7f) };   // Guitar 4x12
+        cabFilters[1] = { high (95.0f, 0.7f), peak (140.0f, 1.2f, 2.0f), peak (800.0f, 1.0f, -2.0f), peak (3200.0f, 1.4f, 4.0f), low (6000.0f, 0.8f), low (7500.0f, 0.7f) };   // Guitar 2x12 Open
+        cabFilters[2] = { high (110.0f, 0.7f), peak (170.0f, 1.2f, 2.5f), peak (1200.0f, 0.8f, 2.0f), peak (3500.0f, 1.6f, 3.0f), low (5500.0f, 0.8f), low (7000.0f, 0.7f) };  // Guitar 1x12
+        cabFilters[3] = { high (42.0f, 0.8f), peak (70.0f, 1.0f, 2.5f), peak (500.0f, 0.8f, -2.5f), peak (2200.0f, 1.2f, 3.0f), low (4000.0f, 0.8f), low (5000.0f, 0.7f) };     // Bass 8x10
+        cabFilters[4] = { high (35.0f, 0.8f), peak (85.0f, 1.0f, 3.5f), peak (350.0f, 0.8f, -2.0f), peak (1500.0f, 1.0f, 1.5f), low (2800.0f, 0.8f), low (3600.0f, 0.7f) };     // Bass 1x15
+
+        for (auto& stage : cabStages)
         {
-            f.prepare (spec);
-            f.reset();
+            stage.prepare (spec);
+            stage.reset();
         }
 
         activeQuality = -1;
@@ -135,6 +147,9 @@ public:
             amp.prepare (osRate);
         }
 
+        overdrive.setVoicing (p.odModel);
+        distortion.setVoicing (p.distModel);
+        fuzz.setVoicing (p.fuzzModel);
         compressor.setControls (p.compSustain, p.compAttack, p.compLevel);
         distortion.setControls (p.distGain, p.distTone, p.distLevel);
         fuzz.setControls (p.fuzzAmount, p.fuzzTone, p.fuzzLevel);
@@ -210,8 +225,16 @@ public:
             if (userIrLoaded.load (std::memory_order_relaxed))
                 convolution.process (context);
             else
-                for (auto& f : cabFilters)
-                    f.process (context);
+            {
+                // Los filtros comparten estado entre pantallas: al cambiar de modelo solo cambian los coeficientes
+                const auto& model = cabFilters[(size_t) juce::jlimit (0, numCabs - 1, p.cabModel)];
+
+                for (size_t i = 0; i < cabStages.size(); ++i)
+                {
+                    cabStages[i].coefficients = model[i];
+                    cabStages[i].process (context);
+                }
+            }
         }
 
         if (p.chorusOn)
@@ -263,7 +286,8 @@ private:
     juce::Reverb reverb;
     float reverbSize = -1.0f, reverbMix = -1.0f;
     juce::dsp::Convolution convolution;
-    std::array<juce::dsp::IIR::Filter<float>, 6> cabFilters;
+    std::array<std::array<juce::dsp::IIR::Coefficients<float>::Ptr, 6>, numCabs> cabFilters;
+    std::array<juce::dsp::IIR::Filter<float>, 6> cabStages;
     std::atomic<bool> userIrLoaded { false };
     juce::SmoothedValue<float> inputGain { 1.0f }, outputGain { 1.0f };
 };

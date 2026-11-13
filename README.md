@@ -6,19 +6,22 @@ Funciona como aplicación independiente y como plugin (VST3 en Windows y Mac, AU
 
 ## Qué incluye ahora
 
-| Bloque | Cómo está hecho |
-|---|---|
-| Afinador cromático | Detección de tono YIN, error medido < 0,2 cents |
-| Puerta de ruido | Con histéresis y retención |
-| Compresor | Detector de pico, relación 4:1 con codo suave |
-| Overdrive | Circuito de diodos en la realimentación de un operacional, resuelto por Newton-Raphson en cada muestra |
-| Distorsión | Circuito de recorte duro: operacional de alta ganancia y diodos a masa, resuelto igual |
-| Fuzz | Dos etapas de saturación asimétrica (modelo de comportamiento, no de circuito) |
-| Amplificador | Tres modelos: Clean American, British Crunch, High Gain. Previo de varias etapas de válvula, control de tonos calculado desde el circuito real y etapa de potencia con sag |
-| Pantalla | Carga de respuestas a impulso (WAV/AIFF) sin latencia, más una pantalla integrada |
-| Chorus | Estéreo, con retardo modulado en cuadratura |
-| Delay | Hasta 1,5 s, con realimentación filtrada |
-| Reverb | Estéreo, algoritmo Freeverb |
+| Bloque | Modelos | Cómo está hecho |
+|---|---|---|
+| Afinador cromático | | Detección de tono YIN, error medido < 0,2 cents; llega al Si grave de un bajo de 5 cuerdas |
+| Puerta de ruido | | Con histéresis y retención |
+| Compresor | | Detector de pico, relación 4:1 con codo suave |
+| Overdrive | Mid Boost, Blues, Transparent, Bass Drive | Circuito de diodos en la realimentación de un operacional, resuelto por Newton-Raphson en cada muestra |
+| Distorsión | Classic, Rodent, Metal, Bass Distortion | Circuito de recorte duro: operacional de alta ganancia y diodos a masa, resuelto igual |
+| Fuzz | Vintage, Octave, Bass Fuzz | Dos etapas de saturación asimétrica (modelo de comportamiento, no de circuito) |
+| Amplificador de guitarra | Clean American, Tweed, Class A Chime, British Crunch, High Gain, Modern Lead | Previo de varias etapas de válvula, control de tonos calculado desde el circuito real y etapa de potencia con sag |
+| Amplificador de bajo | Bass Tube, Bass Clean, Bass Rock | Igual, con respuesta extendida en graves |
+| Pantalla | Guitar 4x12, Guitar 2x12 Open, Guitar 1x12, Bass 8x10, Bass 1x15 | Pantallas integradas por filtros, o carga de respuestas a impulso propias (WAV/AIFF) sin latencia |
+| Chorus | | Estéreo, con retardo modulado en cuadratura |
+| Delay | | Hasta 1,5 s, con realimentación filtrada |
+| Reverb | | Estéreo, algoritmo Freeverb |
+
+Los modelos "Bass" de los pedales conservan los graves limpios y solo saturan el resto, para que el bajo no pierda cuerpo.
 
 Orden de la señal: puerta → compresor → overdrive → distorsión → fuzz → amplificador → pantalla → chorus → delay → reverb.
 

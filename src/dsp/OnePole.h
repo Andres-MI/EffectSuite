@@ -28,6 +28,35 @@ struct OnePole
     double G = 0.0, s = 0.0;
 };
 
+/** Filtro de campana (peaking) de segundo orden. */
+struct PeakFilter
+{
+    void set (double hz, double q, double gainDb, double sampleRate) noexcept
+    {
+        const double A = std::pow (10.0, gainDb / 40.0);
+        const double w = 2.0 * 3.14159265358979323846 * std::min (hz, 0.45 * sampleRate) / sampleRate;
+        const double alpha = std::sin (w) / (2.0 * q), c = std::cos (w);
+        const double a0 = 1.0 + alpha / A;
+        b0 = (1.0 + alpha * A) / a0;
+        b1 = -2.0 * c / a0;
+        b2 = (1.0 - alpha * A) / a0;
+        a1 = b1;
+        a2 = (1.0 - alpha / A) / a0;
+    }
+
+    void reset() noexcept { s1 = s2 = 0.0; }
+
+    inline double process (double x) noexcept
+    {
+        const double y = b0 * x + s1;
+        s1 = b1 * x - a1 * y + s2;
+        s2 = b2 * x - a2 * y;
+        return y;
+    }
+
+    double b0 = 1.0, b1 = 0.0, b2 = 0.0, a1 = 0.0, a2 = 0.0, s1 = 0.0, s2 = 0.0;
+};
+
 /** Suavizado exponencial de un parámetro, muestra a muestra. */
 struct Smoothed
 {
