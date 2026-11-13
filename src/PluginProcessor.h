@@ -58,8 +58,24 @@ public:
     /** Aviso para mostrar junto al nombre (por ejemplo, frecuencia de muestreo distinta), o cadena vacía. */
     juce::String getNeuralModelNote() const;
 
+    //==========================================================================
+    // Pedalera: qué pedales están colocados. Un pedal que no está en la pedalera no se muestra
+    // y está apagado. El orden de la señal es fijo; esto solo decide cuáles se ven.
+    // Identificadores: gate, wah, comp, oct, phaser, od, dist, fuzz, eq, flanger, chorus, trem, delay, reverb.
+    // El parámetro de encendido de cada uno es el identificador seguido de "On".
+
+    static const juce::StringArray& getAllPedalIds();
+    bool isOnBoard (const juce::String& pedalId) const;
+    /** Coloca o quita un pedal. Al quitarlo también lo apaga. Hilo de mensajes. */
+    void setOnBoard (const juce::String& pedalId, bool shouldBeOnBoard);
+    /** Cambia cada vez que la pedalera cambia (también al cargar un estado): el editor lo consulta en su temporizador. */
+    int getBoardRevision() const noexcept { return boardRevision.load(); }
+
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
+    juce::StringArray readBoard() const;
+    void writeBoard (const juce::StringArray&);
+    std::atomic<int> boardRevision { 0 };
     void timerCallback() override;
     fx::ChainParams readParams() const;
 

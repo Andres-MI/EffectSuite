@@ -352,6 +352,61 @@ juce::String EffectSuiteProcessor::getImpulseResponseName() const
     return irFile == juce::File() ? juce::String() : irFile.getFileName();
 }
 
+const juce::StringArray& EffectSuiteProcessor::getAllPedalIds()
+{
+    static const juce::StringArray ids { "gate", "wah", "comp", "oct", "phaser", "od", "dist", "fuzz",
+                                         "eq", "flanger", "chorus", "trem", "delay", "reverb" };
+    return ids;
+}
+
+juce::StringArray EffectSuiteProcessor::readBoard() const
+{
+    juce::StringArray board;
+
+    if (apvts.state.hasProperty ("board"))
+        board.addTokens (apvts.state.getProperty ("board").toString(), ",", "");
+    else
+        board = { "gate", "comp", "od", "chorus", "delay", "reverb" };      // pedalera inicial
+
+    board.removeEmptyStrings();
+
+    // Un pedal encendido siempre está en la pedalera (por ejemplo, en proyectos guardados con una versión anterior)
+    for (auto& id : getAllPedalIds())
+        if (auto* on = apvts.getRawParameterValue (id + "On"))
+            if (on->load() > 0.5f)
+                board.addIfNotAlreadyThere (id);
+
+    return board;
+}
+
+void EffectSuiteProcessor::writeBoard (const juce::StringArray& board)
+{
+    apvts.state.setProperty ("board", board.joinIntoString (","), nullptr);
+    ++boardRevision;
+}
+
+bool EffectSuiteProcessor::isOnBoard (const juce::String& pedalId) const
+{
+    return readBoard().contains (pedalId);
+}
+
+void EffectSuiteProcessor::setOnBoard (const juce::String& pedalId, bool shouldBeOnBoard)
+{
+    if (! getAllPedalIds().contains (pedalId))
+        return;
+
+    if (! shouldBeOnBoard)
+        if (auto* on = apvts.getParameter (pedalId + "On"))
+            on->setValueNotifyingHost (0.0f);
+
+    auto board = readBoard();
+
+    if (shouldBeOnBoard) board.addIfNotAlreadyThere (pedalId);
+    else                 board.removeString (pedalId);
+
+    writeBoard (board);
+}
+
 juce::String EffectSuiteProcessor::loadNeuralModel (const juce::File& file)
 {
     if (! file.existsAsFile())
@@ -413,6 +468,7 @@ void EffectSuiteProcessor::setStateInformation (const void* data, int sizeInByte
         const juce::String path = state.getProperty ("irFile").toString();
         const juce::String namPath = state.getProperty ("namFile").toString();
         apvts.replaceState (state);
+        ++boardRevision;
 
         if (! (path.isNotEmpty() && juce::File::isAbsolutePath (path) && juce::File (path).existsAsFile()
                && loadImpulseResponse (juce::File (path))))
