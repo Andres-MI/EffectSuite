@@ -18,6 +18,7 @@ Funciona como aplicación independiente y como plugin (VST3 en Windows y Mac, AU
 | Distorsión | Classic, Rodent, Metal, Bass Distortion | Circuito de recorte duro: operacional de alta ganancia y diodos a masa, resuelto igual |
 | Fuzz | Vintage, Octave, Bass Fuzz | Dos etapas de saturación asimétrica (modelo de comportamiento, no de circuito) |
 | Amplificador de guitarra | Clean American, Tweed, Class A Chime, British Crunch, High Gain, Modern Lead | Previo de varias etapas de válvula, control de tonos calculado desde el circuito real y etapa de potencia con sag |
+| Capturas neuronales | Cualquier archivo `.nam` | Carga capturas de amplis y pedales reales en formato Neural Amp Modeler; sustituyen al ampli modelado |
 | Amplificador de bajo | Bass Tube, Bass Clean, Bass Rock | Igual, con respuesta extendida en graves |
 | Pantalla | Guitar 4x12, Guitar 2x12 Open, Guitar 1x12, Bass 8x10, Bass 1x15 | Pantallas integradas por filtros, o carga de respuestas a impulso propias (WAV/AIFF) sin latencia |
 | Ecualizador | | Cuatro bandas de ±12 dB: 100 Hz, 400 Hz, 1,6 kHz y 5 kHz |
@@ -63,7 +64,7 @@ xattr -cr /Applications/EffectSuite.app
 
 ## Compilar
 
-Hace falta CMake 3.22 o posterior y un compilador de C++17 (Visual Studio 2022, Xcode o GCC). JUCE se descarga solo.
+Hace falta CMake 3.24 o posterior y un compilador de C++20 (Visual Studio 2022, Xcode o GCC). JUCE, Neural Amp Modeler Core y Eigen se descargan solos.
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -93,5 +94,7 @@ Con `--render <carpeta>` escribe además archivos WAV de demostración con una g
 - `tests/Measure.cpp`: pruebas de medida.
 
 ## Licencia de dependencias
+
+Las capturas `.nam` se reproducen con [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) (MIT) y [Eigen](https://eigen.tuxfamily.org) (MPL 2.0). El archivo `tests/data/wavenet_a1_standard.nam` procede de ese repositorio.
 
 EffectSuite usa [JUCE](https://juce.com), con licencia AGPLv3 o comercial. Distribuir binarios sin licencia comercial de JUCE implica publicar el código bajo AGPLv3.

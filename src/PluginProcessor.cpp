@@ -354,10 +354,50 @@ juce::String EffectSuiteProcessor::getImpulseResponseName() const
     return irFile == juce::File() ? juce::String() : irFile.getFileName();
 }
 
+juce::String EffectSuiteProcessor::loadNeuralModel (const juce::File& file)
+{
+    if (! file.existsAsFile())
+        return "No se encuentra el archivo";
+
+    const auto result = chain.loadNeuralModel (file.getFullPathName().toStdString());
+
+    if (! result.ok)
+        return juce::String::fromUTF8 (result.error.c_str());
+
+    namFile = file;
+    namSampleRate = result.modelSampleRate;
+    return {};
+}
+
+void EffectSuiteProcessor::clearNeuralModel()
+{
+    chain.clearNeuralModel();
+    namFile = juce::File();
+    namSampleRate = 0.0;
+}
+
+juce::String EffectSuiteProcessor::getNeuralModelName() const
+{
+    return namFile == juce::File() ? juce::String() : namFile.getFileNameWithoutExtension();
+}
+
+juce::String EffectSuiteProcessor::getNeuralModelNote() const
+{
+    const double rate = getSampleRate();
+
+    if (namFile == juce::File() || namSampleRate <= 0.0 || rate <= 0.0 || std::abs (rate - namSampleRate) < 1.0)
+        return {};
+
+    return juce::String::fromUTF8 ("Captura hecha a ") + juce::String (namSampleRate / 1000.0, 1)
+         + juce::String::fromUTF8 (" kHz y el audio va a ") + juce::String (rate / 1000.0, 1)
+         + juce::String::fromUTF8 (" kHz: sonará distinto");
+}
+
 void EffectSuiteProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
     state.setProperty ("irFile", irFile.getFullPathName(), nullptr);
+    state.setProperty ("namFile", namFile.getFullPathName(), nullptr);
 
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
@@ -373,12 +413,16 @@ void EffectSuiteProcessor::setStateInformation (const void* data, int sizeInByte
             return;
 
         const juce::String path = state.getProperty ("irFile").toString();
+        const juce::String namPath = state.getProperty ("namFile").toString();
         apvts.replaceState (state);
 
         if (path.isNotEmpty() && juce::File::isAbsolutePath (path) && juce::File (path).existsAsFile())
             loadImpulseResponse (juce::File (path));
         else
             clearImpulseResponse();
+
+        if (namPath.isEmpty() || ! juce::File::isAbsolutePath (namPath) || loadNeuralModel (juce::File (namPath)).isNotEmpty())
+            clearNeuralModel();
     }
 }
 

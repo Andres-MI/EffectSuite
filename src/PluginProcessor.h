@@ -49,6 +49,15 @@ public:
     /** Nombre del archivo de IR cargado, o cadena vacía si se usa la pantalla integrada. */
     juce::String getImpulseResponseName() const;
 
+    /** Carga una captura Neural Amp Modeler (.nam), que sustituye al amplificador modelado.
+        Devuelve una cadena vacía si se cargó, o el motivo del error. Hilo de mensajes. */
+    juce::String loadNeuralModel (const juce::File&);
+    void clearNeuralModel();
+    /** Nombre del archivo de la captura cargada, o cadena vacía si se usa el ampli modelado. */
+    juce::String getNeuralModelName() const;
+    /** Aviso para mostrar junto al nombre (por ejemplo, frecuencia de muestreo distinta), o cadena vacía. */
+    juce::String getNeuralModelNote() const;
+
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
     void handleAsyncUpdate() override;
@@ -59,7 +68,8 @@ private:
     juce::AudioBuffer<float> work;      // canal 0 = entrada mono, 1 y 2 = salida izquierda y derecha
     int maxBlock = 0;
     std::atomic<int> latencyQuality { -1 };
-    juce::File irFile;
+    juce::File irFile, namFile;
+    double namSampleRate = 0.0;
 
     struct ParamRefs
     {

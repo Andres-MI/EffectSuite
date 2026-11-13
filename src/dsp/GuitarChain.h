@@ -5,6 +5,7 @@
 #include "Distortion.h"
 #include "Fuzz.h"
 #include "Modulation.h"
+#include "NeuralAmp.h"
 #include "NoiseGate.h"
 #include "Overdrive.h"
 #include "TimeEffects.h"
@@ -90,6 +91,9 @@ public:
 
         gate.prepare (fs);
         compressor.prepare (fs);
+        neural.prepare (fs, maxBlockSize);
+        neuralIn.reset (fs, 0.02);
+        neuralOut.reset (fs, 0.02);
         wah.prepare (fs);
         octaver.prepare (fs);
         phaser.prepare (fs);
@@ -146,6 +150,13 @@ public:
 
     void clearImpulseResponse() noexcept    { userIrLoaded.store (false); }
     bool hasImpulseResponse() const noexcept { return userIrLoaded.load(); }
+
+    /** Carga una captura Neural Amp Modeler, que sustituye al amplificador modelado mientras esté cargada.
+        Con una captura activa, Gain actúa como nivel de entrada a la captura (+-20 dB) y Master como
+        nivel de salida (+-20 dB); el control de tonos no interviene. Llamar desde el hilo de mensajes. */
+    NeuralAmp::LoadResult loadNeuralModel (const std::string& path) { return neural.load (path); }
+    void clearNeuralModel()                                         { neural.clear(); }
+    bool hasNeuralModel() const noexcept                            { return neural.isLoaded(); }
 
     /** Procesa numSamples (<= maxBlockSize de prepare).
 
@@ -237,7 +248,10 @@ public:
         float* d = osBlock.getChannelPointer (0);
         const int osSamples = (int) osBlock.getNumSamples();
 
-        if (p.odOn || p.distOn || p.fuzzOn || p.ampOn)
+        const bool useNeural = p.ampOn && neural.isLoaded();
+        const bool useAmp = p.ampOn && ! useNeural;
+
+        if (p.odOn || p.distOn || p.fuzzOn || useAmp)
         {
             for (int i = 0; i < osSamples; ++i)
             {
@@ -245,12 +259,22 @@ public:
                 if (p.odOn)   x = overdrive.process (x);
                 if (p.distOn) x = distortion.process (x);
                 if (p.fuzzOn) x = fuzz.process (x);
-                if (p.ampOn)  x = amp.process (x);
+                if (useAmp)   x = amp.process (x);
                 d[i] = (float) x;
             }
         }
 
         os.processSamplesDown (block);
+
+        if (useNeural)
+        {
+            neuralIn.setTargetValue (juce::Decibels::decibelsToGain (40.0f * (p.ampGain - 0.5f)));
+            neuralOut.setTargetValue (juce::Decibels::decibelsToGain (40.0f * (p.ampMaster - 0.5f)));
+
+            for (int i = 0; i < numSamples; ++i) data[i] *= neuralIn.getNextValue();
+            neural.process (data, numSamples);
+            for (int i = 0; i < numSamples; ++i) data[i] *= neuralOut.getNextValue();
+        }
 
         if (p.cabOn)
         {
@@ -333,6 +357,8 @@ private:
     Distortion distortion;
     Fuzz fuzz;
     Amp amp;
+    NeuralAmp neural;
+    juce::SmoothedValue<float> neuralIn { 1.0f }, neuralOut { 1.0f };
     Wah wah;
     Octaver octaver;
     Phaser phaser;

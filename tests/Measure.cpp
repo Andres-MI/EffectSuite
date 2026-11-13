@@ -620,6 +620,64 @@ void testModulation()
 }
 
 //==============================================================================
+void testNeural()
+{
+    std::printf ("\n12. Capturas Neural Amp Modeler\n");
+    const double fs = 48000.0;
+    const std::string path = std::string (EFFECTSUITE_TEST_DATA) + "/wavenet_a1_standard.nam";
+
+    fx::GuitarChain chain;
+    chain.prepare (fs, 64);
+
+    const auto bad = chain.loadNeuralModel (std::string (EFFECTSUITE_TEST_DATA) + "/no_existe.nam");
+    check (! bad.ok && ! chain.hasNeuralModel(), "un archivo inexistente se rechaza sin romper nada");
+
+    const auto loaded = chain.loadNeuralModel (path);
+    std::printf ("   captura WaveNet estándar: %s%s\n", loaded.ok ? "cargada" : "ERROR: ", loaded.ok ? "" : loaded.error.c_str());
+    check (loaded.ok && chain.hasNeuralModel(), "carga una captura WaveNet estándar");
+    if (! loaded.ok) return;
+
+    auto p = cleanParams();
+    p.ampOn = true;
+
+    // La captura sustituye al ampli modelado: la salida cambia respecto al ampli normal y es finita
+    auto x = sine (220.0, fs, 0.2, 96000);
+    auto reference = x;
+    runChain (chain, x, p);
+    {
+        fx::GuitarChain modelled;
+        modelled.prepare (fs, 64);
+        runChain (modelled, reference, p);
+    }
+    bool finite = true;
+    double peak = 0.0, diff = 0.0;
+    for (size_t i = 48000; i < x.size(); ++i)
+    {
+        finite = finite && std::isfinite (x[i]);
+        peak = std::max (peak, (double) std::abs (x[i]));
+        diff = std::max (diff, (double) std::abs (x[i] - reference[i]));
+    }
+    std::printf ("   salida con la captura: pico %.1f dBFS\n", dB (peak));
+    check (finite && peak > 1e-3 && peak < 4.0 && diff > 1e-3, "la captura procesa la señal en lugar del ampli modelado");
+
+    // Coste: la red neuronal es lo más caro de toda la cadena
+    auto y = sine (196.0, fs, 0.2, (size_t) (fs * 10.0));
+    const auto t0 = std::chrono::steady_clock::now();
+    runChain (chain, y, p);
+    const double elapsed = std::chrono::duration<double> (std::chrono::steady_clock::now() - t0).count();
+    std::printf ("   coste con la captura: %.1f %% de un núcleo (bloques de 64 muestras)\n", 10.0 * elapsed);
+    check (elapsed < 5.0, "la captura estándar corre en tiempo real con margen (< 50 % de un núcleo)");
+
+    // Al quitarla vuelve el ampli modelado
+    chain.clearNeuralModel();
+    auto z = sine (220.0, fs, 0.2, 96000);
+    runChain (chain, z, p);
+    double back = 0.0;
+    for (size_t i = 72000; i < z.size(); ++i) back = std::max (back, (double) std::abs (z[i] - reference[i]));
+    check (! chain.hasNeuralModel() && back < 1e-3, "al quitar la captura vuelve el ampli modelado");
+}
+
+//==============================================================================
 /** Cuerda pulsada sintética (Karplus-Strong) para oír los modelos sin una guitarra real. */
 std::vector<float> syntheticRiff (double fs, double transpose = 1.0)
 {
@@ -739,6 +797,7 @@ int main (int argc, char** argv)
     testStability();
     testPedals();
     testModulation();
+    testNeural();
 
     if (argc == 3 && juce::String (argv[1]) == "--render")
         renderDemos (juce::File::getCurrentWorkingDirectory().getChildFile (juce::String (argv[2])));
