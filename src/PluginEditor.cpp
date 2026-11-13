@@ -466,12 +466,21 @@ EffectSuiteEditor::AmpUnit::AmpUnit (EffectSuiteEditor& e) : editor (e)
     addAndMakeVisible (model);
     modelAttachment = std::make_unique<ComboAttachment> (editor.processor.apvts, "ampModel", model);
 
+    addAndMakeVisible (loadCapture);
+    addAndMakeVisible (clearCapture);
+    loadCapture.onClick = [this] { chooseCapture(); };
+    clearCapture.onClick = [this] { editor.processor.clearNeuralModel(); updateCaptureState(); };
+    captureName.setJustificationType (juce::Justification::centred);
+    captureName.setMinimumHorizontalScale (0.6f);
+    addAndMakeVisible (captureName);
+
     power.setTooltip ("Amplificador");
     addAndMakeVisible (power);
     powerAttachment = std::make_unique<ButtonAttachment> (editor.processor.apvts, "ampOn", power);
 
     lastOn = power.getToggleState();
     refresh();
+    updateCaptureState();
 
     power.onStateChange = [this]
     {
@@ -494,6 +503,65 @@ void EffectSuiteEditor::AmpUnit::refresh()
         k->slider.setColour (juce::Slider::rotarySliderOutlineColourId, juce::Colours::black.withAlpha (0.3f));
     }
 
+    repaint();
+}
+
+void EffectSuiteEditor::AmpUnit::chooseCapture()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Seleccionar captura Neural Amp Modeler",
+                                                   juce::File::getSpecialLocation (juce::File::userHomeDirectory),
+                                                   "*.nam");
+    juce::Component::SafePointer<AmpUnit> safe (this);
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                          [safe] (const juce::FileChooser& fc)
+    {
+        if (safe == nullptr)
+            return;
+        const auto f = fc.getResult();
+        if (f != juce::File())
+        {
+            const auto error = safe->editor.processor.loadNeuralModel (f);
+            if (error.isNotEmpty())
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
+                                                        "No se pudo cargar la captura", error);
+        }
+        safe->updateCaptureState();
+    });
+}
+
+bool EffectSuiteEditor::AmpUnit::captureStateIsStale() const
+{
+    return editor.processor.getNeuralModelName() != lastCaptureName
+        || editor.processor.getNeuralModelNote() != lastCaptureNote;
+}
+
+void EffectSuiteEditor::AmpUnit::updateCaptureState()
+{
+    lastCaptureName = editor.processor.getNeuralModelName();
+    lastCaptureNote = editor.processor.getNeuralModelNote();
+    const bool loaded = lastCaptureName.isNotEmpty();
+
+    captureName.setText (loaded ? lastCaptureName : juce::String ("Sin captura"), juce::dontSendNotification);
+    captureName.setColour (juce::Label::textColourId,
+                           lastCaptureNote.isNotEmpty() ? juce::Colour (0xffffb347)
+                                                        : (loaded ? textColour : dimTextColour));
+    captureName.setTooltip (lastCaptureNote.isNotEmpty() ? lastCaptureNote : lastCaptureName);
+    clearCapture.setEnabled (loaded);
+
+    model.setEnabled (! loaded);
+    model.setAlpha (loaded ? 0.4f : 1.0f);
+
+    // Bass, Mid, Treble and Presence do nothing with a capture; Gain and Master become input/output level
+    for (size_t i = 0; i < knobs.size(); ++i)
+    {
+        const bool tone = i >= 1 && i <= 4;
+        knobs[i]->slider.setEnabled (! (loaded && tone));
+        knobs[i]->label.setEnabled (! (loaded && tone));
+        knobs[i]->slider.setAlpha (loaded && tone ? 0.35f : 1.0f);
+        knobs[i]->label.setAlpha (loaded && tone ? 0.35f : 1.0f);
+    }
+    knobs.front()->label.setText (loaded ? "Entrada" : "Gain", juce::dontSendNotification);
+    knobs.back()->label.setText (loaded ? "Salida" : "Master", juce::dontSendNotification);
     repaint();
 }
 
@@ -521,7 +589,7 @@ void EffectSuiteEditor::AmpUnit::paint (juce::Graphics& g)
     g.setFont (juce::FontOptions (juce::jmax (10.0f, 16.0f * s), juce::Font::bold));
     g.drawFittedText ("AMPLIFICADOR", badge.toNearestInt().reduced (4, 0), juce::Justification::centred, 1, 0.7f);
 
-    g.setColour (lastOn ? juce::Colours::white : dimTextColour);
+    g.setColour (lastOn && model.isEnabled() ? juce::Colours::white : dimTextColour);
     g.setFont (juce::FontOptions (smallFont (12.0f, s)));
     g.drawText ("Modelo", juce::Rectangle<int> (model.getX() - juce::roundToInt (70 * s), model.getY(),
                                                 juce::roundToInt (62 * s), model.getHeight()),
@@ -559,10 +627,20 @@ void EffectSuiteEditor::AmpUnit::resized()
     r.removeFromTop (juce::roundToInt (7 * s));
     plateArea = r;
 
-    const int comboH = juce::jmin (juce::roundToInt (26 * s), grilleArea.getHeight() - 4);
-    model.setBounds (grilleArea.withTrimmedRight (juce::roundToInt (12 * s))
-                               .removeFromRight (juce::roundToInt (210 * s))
-                               .withSizeKeepingCentre (juce::roundToInt (210 * s), comboH));
+    // Right part of the grille: model combo on top, capture controls below
+    const int ctlH = juce::jmin (juce::roundToInt (26 * s), (grilleArea.getHeight() - 6) / 2);
+    const int gap = juce::roundToInt (6 * s);
+    auto strip = grilleArea.withTrimmedRight (juce::roundToInt (12 * s))
+                           .removeFromRight (juce::roundToInt (330 * s))
+                           .withSizeKeepingCentre (juce::roundToInt (330 * s), ctlH * 2 + gap);
+    model.setBounds (strip.removeFromTop (ctlH).removeFromRight (juce::roundToInt (250 * s)));
+    strip.removeFromTop (gap);
+    loadCapture.setBounds (strip.removeFromLeft (juce::roundToInt (120 * s)));
+    strip.removeFromLeft (gap);
+    clearCapture.setBounds (strip.removeFromRight (juce::roundToInt (62 * s)));
+    strip.removeFromRight (gap);
+    captureName.setBounds (strip);
+    captureName.setFont (juce::FontOptions (smallFont (12.0f, s)));
 
     auto p = plateArea.reduced (juce::roundToInt (10 * s), juce::roundToInt (5 * s));
     auto powerColumn = p.removeFromLeft (juce::roundToInt (70 * s));
@@ -1008,6 +1086,10 @@ void EffectSuiteEditor::timerCallback()
     // The IR can also change through state restore
     if (processor.getImpulseResponseName() != cab->getShownIrName())
         cab->updateIrState();
+
+    // Same for the amp capture
+    if (amp->captureStateIsStale())
+        amp->updateCaptureState();
 }
 
 //==============================================================================

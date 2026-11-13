@@ -111,16 +111,23 @@ private:
         void paint (juce::Graphics&) override;
         void resized() override;
         juce::Button& getSwitch() noexcept { return power; }
+        void updateCaptureState();
+        bool captureStateIsStale() const;
 
         float scale = 1.0f;
 
     private:
         void refresh();
+        void chooseCapture();
 
         EffectSuiteEditor& editor;
         bool lastOn = false;
+        juce::String lastCaptureName, lastCaptureNote;
         std::vector<std::unique_ptr<Knob>> knobs;
         juce::ComboBox model;
+        juce::Label captureName;
+        juce::TextButton loadCapture { juce::CharPointer_UTF8 ("Cargar captura\xe2\x80\xa6") }, clearCapture { "Quitar" };
+        std::unique_ptr<juce::FileChooser> chooser;
         PowerSwitch power;
         std::unique_ptr<ComboAttachment> modelAttachment;
         std::unique_ptr<ButtonAttachment> powerAttachment;
