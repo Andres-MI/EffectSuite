@@ -1088,6 +1088,11 @@ EffectSuiteEditor::EffectSuiteEditor (EffectSuiteProcessor& p)
     addAndMakeVisible (outMeter);
 
     // Preset bar
+    cpuLabel.setJustificationType (juce::Justification::centredRight);
+    cpuLabel.setColour (juce::Label::textColourId, dimTextColour);
+    cpuLabel.setTooltip (juce::String::fromUTF8 ("Carga del procesado de audio. Si se acerca al 100 %, baja la calidad, quita pedales o sube el búfer."));
+    addAndMakeVisible (cpuLabel);
+
     presetLabel.setText ("Preset", juce::dontSendNotification);
     presetLabel.setJustificationType (juce::Justification::centredLeft);
     presetLabel.setColour (juce::Label::textColourId, dimTextColour);
@@ -1558,6 +1563,20 @@ void EffectSuiteEditor::timerCallback()
         repaint (tunerArea);
     }
 
+    if ((timerTick % 10) == 0)
+    {
+        // Carga de CPU y cortes de audio, tres veces por segundo
+        const int percent = juce::roundToInt (100.0f * processor.getCpuLoad());
+        const int overloads = processor.getOverloadCount();
+        juce::String text = "CPU " + juce::String (percent) + " %";
+
+        if (overloads > 0)
+            text << juce::String::fromUTF8 ("  ·  ") << overloads << (overloads == 1 ? " corte" : " cortes");
+
+        cpuLabel.setText (text, juce::dontSendNotification);
+        cpuLabel.setColour (juce::Label::textColourId, percent >= 85 ? ledRed : (percent >= 60 ? accentColour : dimTextColour));
+    }
+
     // Rebuild the board and the preset list only when something changed
     const bool boardChanged = processor.getBoardRevision() != lastBoardRevision;
     if (boardChanged && draggedPedal == nullptr)
@@ -1721,6 +1740,8 @@ void EffectSuiteEditor::resized()
         saveButton.setBounds (pb.removeFromLeft (px (96)));
         pb.removeFromLeft (px (8));
         deleteButton.setBounds (pb.removeFromLeft (px (96)));
+        cpuLabel.setBounds (pb.removeFromRight (px (230)));
+        cpuLabel.setFont (juce::FontOptions (smallFont (12.0f, s)));
     }
 
     area.reduce (px (10), 0);

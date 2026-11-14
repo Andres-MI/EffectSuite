@@ -114,7 +114,7 @@ APVTS::ParameterLayout EffectSuiteProcessor::createLayout()
     layout.add (std::make_unique<Float> (id ("outputLevel"), "Output Level", Range (-24.0f, 12.0f, 0.1f), 0.0f,
                                          juce::AudioParameterFloatAttributes().withLabel ("dB")));
     layout.add (std::make_unique<Choice> (id ("quality"), "Quality",
-                                          juce::StringArray { "Eco (2x)", "Normal (4x)", "High (8x)" }, 1));
+                                          juce::StringArray { juce::String::fromUTF8 ("Mínimo (1x)"), "Eco (2x)", "Normal (4x)", "Alta (8x)" }, 2));
     layout.add (std::make_unique<Bool> (id ("tunerMute"), "Tuner Mute", false));
 
     return layout;
@@ -174,8 +174,9 @@ void EffectSuiteProcessor::prepareToPlay (double sampleRate, int samplesPerBlock
     work.setSize (3, maxBlock, false, false, true);
     chain.prepare (sampleRate, maxBlock);
     pitchTracker.prepare (sampleRate);
+    loadMeasurer.reset (sampleRate, samplesPerBlock);
 
-    const int quality = (int) params.quality->load();
+    const int quality = (int) params.quality->load() - 1;
     latencyQuality.store (quality);
     setLatencySamples (juce::roundToInt (chain.getLatencySamples (quality)));
 }
@@ -250,7 +251,7 @@ fx::ChainParams EffectSuiteProcessor::readParams() const
     p.ampMaster       = params.ampMaster->load();
     p.cabOn           = params.cabOn->load() > 0.5f;
     p.outputDb        = params.outputLevel->load();
-    p.quality         = (int) params.quality->load();
+    p.quality         = (int) params.quality->load() - 1;
     p.mute            = params.tunerMute->load() > 0.5f;
 
     const auto pre = preOrderPacked.load (std::memory_order_relaxed), post = postOrderPacked.load (std::memory_order_relaxed);
@@ -262,6 +263,7 @@ fx::ChainParams EffectSuiteProcessor::readParams() const
 void EffectSuiteProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
+    juce::AudioProcessLoadMeasurer::ScopedTimer loadTimer (loadMeasurer, buffer.getNumSamples());
 
     const int numSamples = buffer.getNumSamples();
     const int numIn = getTotalNumInputChannels();

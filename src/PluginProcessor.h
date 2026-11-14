@@ -40,6 +40,11 @@ public:
     /** Picos de entrada y salida (lineales) desde la última lectura. El editor los lee con exchange (0). */
     std::atomic<float> inputPeak { 0.0f }, outputPeak { 0.0f };
 
+    /** Carga de CPU del procesado de audio, de 0 a 1 (1 = no da tiempo a procesar un bloque antes del siguiente). */
+    float getCpuLoad() const { return (float) loadMeasurer.getLoadAsProportion(); }
+    /** Veces que un bloque ha tardado más de lo que dura (cortes de audio) desde que se preparó el audio. */
+    int getOverloadCount() const { return loadMeasurer.getXRunCount(); }
+
     /** Frecuencia detectada por el afinador en Hz, o 0 si no hay nota. Llamar desde el hilo de la interfaz. */
     float detectPitch() { return pitchTracker.detect(); }
 
@@ -108,6 +113,7 @@ private:
 
     fx::GuitarChain chain;
     fx::PitchTracker pitchTracker;
+    juce::AudioProcessLoadMeasurer loadMeasurer;
     juce::AudioBuffer<float> work;      // canal 0 = entrada mono, 1 y 2 = salida izquierda y derecha
     int maxBlock = 0;
     std::atomic<int> latencyQuality { -1 };

@@ -66,6 +66,12 @@ xattr -cr /Applications/EffectSuite.app
 4. La entrada arranca silenciada para evitar acoples: desactívalo en el aviso amarillo de la ventana o en esos mismos ajustes.
 5. Elige en el panel **Entrada** el canal donde está enchufada la guitarra.
 
+## Equipos poco potentes
+
+- El selector **Calidad** fija el sobremuestreo: Mínimo (1x), Eco (2x), Normal (4x) y Alta (8x). Cada paso hacia abajo consume aproximadamente la mitad, a cambio de más aliasing en distorsiones fuertes. Mínimo no añade latencia.
+- El indicador **CPU** de la barra de presets muestra la carga del procesado y cuenta los cortes de audio.
+- Las capturas neuronales son lo más caro: en equipos justos conviene usar los amplis modelados o capturas ligeras ("nano" o "feather").
+
 ## Compilar
 
 Hace falta CMake 3.24 o posterior y un compilador de C++20 (Visual Studio 2022, Xcode o GCC). JUCE, Neural Amp Modeler Core y Eigen se descargan solos.

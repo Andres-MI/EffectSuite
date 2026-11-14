@@ -55,7 +55,7 @@ struct ChainParams
     bool  reverbOn = false;
     float reverbSize = 0.5f, reverbMix = 0.25f;
     float outputDb = 0.0f;
-    int   quality = 1;          // 0 = 2x, 1 = 4x, 2 = 8x
+    int   quality = 1;          // sobremuestreo: -1 = ninguno (1x), 0 = 2x, 1 = 4x, 2 = 8x
     bool  mute = false;         // silencia la salida (afinador), con fundido
 
     // Orden de los pedales dentro de cada tramo: permutaciones de los índices de PrePedal y PostPedal
@@ -190,20 +190,24 @@ public:
             f->prepare (fs);
 
         dipStep = (float) (1.0 / (0.004 * fs));
-        activeQuality = -1;
+        activeQuality = notPrepared;
         firstBlock = true;
     }
 
     /** Latencia que añade el sobremuestreo, en muestras, para la calidad indicada. */
     float getLatencySamples (int quality) const noexcept
     {
-        return oversamplers[(size_t) oversamplerIndex (quality)]->getLatencyInSamples();
+        const int index = oversamplerIndex (quality);
+        return index < 0 ? 0.0f : oversamplers[(size_t) index]->getLatencyInSamples();
     }
 
     /** Índice de sobremuestreo real para una calidad pedida. A frecuencias de muestreo altas hace
         falta menos factor para el mismo resultado, y el coste sería desproporcionado. */
     int oversamplerIndex (int quality) const noexcept
     {
+        if (quality < 0)
+            return -1;      // sin sobremuestreo
+
         const int reduction = fs > 150000.0 ? 2 : (fs > 75000.0 ? 1 : 0);
         return juce::jmax (0, juce::jlimit (0, 2, quality) - reduction);
     }
@@ -250,8 +254,8 @@ public:
         if (quality != activeQuality)
         {
             activeQuality = quality;
-            const double osRate = fs * (double) (2 << quality);
-            oversamplers[(size_t) quality]->reset();
+            const double osRate = quality < 0 ? fs : fs * (double) (2 << quality);
+            if (quality >= 0) oversamplers[(size_t) quality]->reset();
             gate.prepare (osRate);
             wah.prepare (osRate);
             compressor.prepare (osRate);
@@ -359,10 +363,15 @@ public:
 
         // --- Pedales de antes del ampli y ampli modelado, sobremuestreados y en el orden elegido
         juce::dsp::AudioBlock<float> block (&data, 1, (size_t) numSamples);
-        auto& os = *oversamplers[(size_t) quality];
-        auto osBlock = os.processSamplesUp (block);
-        float* d = osBlock.getChannelPointer (0);
-        const int osSamples = (int) osBlock.getNumSamples();
+        float* d = data;
+        int osSamples = numSamples;
+
+        if (quality >= 0)
+        {
+            auto osBlock = oversamplers[(size_t) quality]->processSamplesUp (block);
+            d = osBlock.getChannelPointer (0);
+            osSamples = (int) osBlock.getNumSamples();
+        }
 
         for (const auto pedal : applied.preOrder)
         {
@@ -384,7 +393,8 @@ public:
             for (int i = 0; i < osSamples; ++i)
                 d[i] += ampFade.next() * ((float) amp.process (d[i]) - d[i]);
 
-        os.processSamplesDown (block);
+        if (quality >= 0)
+            oversamplers[(size_t) quality]->processSamplesDown (block);
 
         // --- Captura neuronal en lugar del ampli modelado
         if (neuralFade.active())
@@ -532,7 +542,7 @@ public:
             std::fill (left, left + numSamples, 0.0f);
             std::fill (right, right + numSamples, 0.0f);
             resetBlocks();
-            oversamplers[(size_t) quality]->reset();
+            if (quality >= 0) oversamplers[(size_t) quality]->reset();
         }
     }
 
@@ -587,7 +597,8 @@ private:
     }
 
     double fs = 48000.0;
-    int maxBlock = 0, activeQuality = -1;
+    static constexpr int notPrepared = -100;
+    int maxBlock = 0, activeQuality = notPrepared;
     bool firstBlock = true;
     Discrete applied;
     float dipGain = 1.0f, dipTarget = 1.0f, dipStep = 1.0f;

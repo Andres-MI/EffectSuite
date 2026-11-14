@@ -259,7 +259,7 @@ private:
     std::unique_ptr<Knob> inputGain, outputLevel;
     juce::ComboBox inputMode, quality;
     juce::ToggleButton tunerMute;
-    juce::Label inputModeLabel, qualityLabel;
+    juce::Label inputModeLabel, qualityLabel, cpuLabel;
     Meter inMeter, outMeter;
     std::unique_ptr<ButtonAttachment> tunerMuteA;          // after the components they reference
     std::unique_ptr<ComboAttachment> inputModeA, qualityA;

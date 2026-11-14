@@ -305,6 +305,26 @@ void testCpu()
         std::printf ("   %dx: %.1f veces más rápido que tiempo real (%.1f %% de un núcleo)\n", 2 << q, factor[q], 100.0 / factor[q]);
     }
 
+    {
+        // Modo Mínimo: sin sobremuestreo
+        fx::GuitarChain chain;
+        chain.prepare (fs, 64);
+        fx::ChainParams p;
+        p.odOn = true; p.ampOn = true; p.ampModel = 2; p.ampGain = 0.7f; p.cabOn = true; p.gateOn = true; p.quality = -1;
+        p.compOn = p.distOn = p.fuzzOn = p.chorusOn = p.delayOn = p.reverbOn = true;
+        p.wahOn = p.octOn = p.phaserOn = p.eqOn = p.flangerOn = p.tremOn = true;
+        auto x = sine (196.0, fs, 0.3, (size_t) (fs * seconds));
+        const auto t0 = std::chrono::steady_clock::now();
+        runChain (chain, x, p);
+        const double elapsed = std::chrono::duration<double> (std::chrono::steady_clock::now() - t0).count();
+        double peak = 0.0;
+        for (size_t i = x.size() / 2; i < x.size(); ++i) peak = std::max (peak, (double) std::abs (x[i]));
+        std::printf ("   1x (Mínimo): %.1f veces más rápido que tiempo real (%.1f %% de un núcleo), latencia %.2f muestras\n",
+                     seconds / elapsed, 100.0 * elapsed / seconds, chain.getLatencySamples (-1));
+        check (seconds / elapsed > factor[0] && peak > 0.01 && chain.getLatencySamples (-1) == 0.0f,
+               "el modo Mínimo suena, gasta menos que Eco y no añade latencia");
+    }
+
     check (factor[1] > 4.0, "calidad Normal usa menos del 25 % de un núcleo en esta máquina");
 }
 
