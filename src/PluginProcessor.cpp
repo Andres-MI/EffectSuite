@@ -147,6 +147,7 @@ EffectSuiteProcessor::EffectSuiteProcessor()
                ref ("reverbOn"), ref ("reverbSize"), ref ("reverbMix"),
                ref ("outputLevel"), ref ("quality"), ref ("tunerMute") };
 
+    updateOrder();
     startTimerHz (10);
 }
 
@@ -251,6 +252,10 @@ fx::ChainParams EffectSuiteProcessor::readParams() const
     p.outputDb        = params.outputLevel->load();
     p.quality         = (int) params.quality->load();
     p.mute            = params.tunerMute->load() > 0.5f;
+
+    const auto pre = preOrderPacked.load (std::memory_order_relaxed), post = postOrderPacked.load (std::memory_order_relaxed);
+    for (size_t i = 0; i < p.preOrder.size(); ++i)  p.preOrder[i]  = (juce::uint8) ((pre >> (4 * i)) & 0xf);
+    for (size_t i = 0; i < p.postOrder.size(); ++i) p.postOrder[i] = (juce::uint8) ((post >> (4 * i)) & 0xf);
     return p;
 }
 
@@ -382,7 +387,64 @@ juce::StringArray EffectSuiteProcessor::readBoard() const
 void EffectSuiteProcessor::writeBoard (const juce::StringArray& board)
 {
     apvts.state.setProperty ("board", board.joinIntoString (","), nullptr);
+    updateOrder();
     ++boardRevision;
+}
+
+/** El orden de la señal es el de la pedalera; los pedales no colocados (apagados) van detrás. */
+void EffectSuiteProcessor::updateOrder()
+{
+    const auto board = readBoard();
+    const auto& all = getAllPedalIds();
+
+    auto pack = [&] (int first, int count)
+    {
+        juce::Array<int> order;
+
+        for (auto& id : board)
+        {
+            const int index = all.indexOf (id) - first;
+            if (index >= 0 && index < count) order.addIfNotAlreadyThere (index);
+        }
+
+        for (int i = 0; i < count; ++i) order.addIfNotAlreadyThere (i);
+
+        juce::uint32 packed = 0;
+        for (int i = 0; i < count; ++i) packed |= (juce::uint32) order[i] << (4 * i);
+        return packed;
+    };
+
+    preOrderPacked.store (pack (0, fx::numPrePedals));
+    postOrderPacked.store (pack (fx::numPrePedals, fx::numPostPedals));
+}
+
+juce::StringArray EffectSuiteProcessor::getBoardRow (bool afterAmp) const
+{
+    juce::StringArray row;
+    const auto& all = getAllPedalIds();
+
+    for (auto& id : readBoard())
+        if (all.contains (id) && (all.indexOf (id) >= fx::numPrePedals) == afterAmp)
+            row.addIfNotAlreadyThere (id);
+
+    return row;
+}
+
+void EffectSuiteProcessor::movePedal (const juce::String& pedalId, int newIndex)
+{
+    const auto& all = getAllPedalIds();
+
+    if (! all.contains (pedalId) || ! isOnBoard (pedalId))
+        return;
+
+    const bool afterAmp = all.indexOf (pedalId) >= fx::numPrePedals;
+    auto row = getBoardRow (afterAmp);
+    row.removeString (pedalId);
+    row.insert (juce::jlimit (0, row.size(), newIndex), pedalId);
+
+    auto board = afterAmp ? getBoardRow (false) : row;
+    board.addArray (afterAmp ? row : getBoardRow (true));
+    writeBoard (board);
 }
 
 bool EffectSuiteProcessor::isOnBoard (const juce::String& pedalId) const
@@ -459,24 +521,231 @@ void EffectSuiteProcessor::getStateInformation (juce::MemoryBlock& destData)
 void EffectSuiteProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     if (auto xml = getXmlFromBinary (data, sizeInBytes))
+        applyState (juce::ValueTree::fromXml (*xml), false);
+}
+
+namespace
+{
+    /** Ajustes del equipo, que un preset no debe cambiar. */
+    const char* const rigSettings[] { "inputGain", "inputMode", "outputLevel", "quality", "tunerMute" };
+
+    bool isRigSetting (const juce::String& id)
     {
-        auto state = juce::ValueTree::fromXml (*xml);
-
-        if (! state.isValid() || ! state.hasType (apvts.state.getType()))
-            return;
-
-        const juce::String path = state.getProperty ("irFile").toString();
-        const juce::String namPath = state.getProperty ("namFile").toString();
-        apvts.replaceState (state);
-        ++boardRevision;
-
-        if (! (path.isNotEmpty() && juce::File::isAbsolutePath (path) && juce::File (path).existsAsFile()
-               && loadImpulseResponse (juce::File (path))))
-            clearImpulseResponse();
-
-        if (namPath.isEmpty() || ! juce::File::isAbsolutePath (namPath) || loadNeuralModel (juce::File (namPath)).isNotEmpty())
-            clearNeuralModel();
+        for (auto* r : rigSettings) if (id == r) return true;
+        return false;
     }
+
+    void setParameterValue (juce::AudioProcessorValueTreeState& apvts, const juce::String& id, float realValue)
+    {
+        if (auto* p = apvts.getParameter (id))
+            p->setValueNotifyingHost (p->convertTo0to1 (realValue));
+    }
+}
+
+/** Devuelve pedales, ampli y pantalla a sus valores por defecto; los parámetros que falten en un
+    estado antiguo se quedan así en lugar de heredar lo que hubiera antes. */
+void EffectSuiteProcessor::resetSoundToDefaults()
+{
+    for (auto* p : getParameters())
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
+            if (! isRigSetting (ranged->getParameterID()))
+                ranged->setValueNotifyingHost (ranged->getDefaultValue());
+}
+
+void EffectSuiteProcessor::applyState (const juce::ValueTree& source, bool keepRigSettings)
+{
+    if (! source.isValid() || ! source.hasType (apvts.state.getType()))
+        return;
+
+    auto state = source.createCopy();
+    float rig[std::size (rigSettings)] {};
+
+    for (size_t i = 0; i < std::size (rigSettings); ++i)
+        rig[i] = apvts.getRawParameterValue (rigSettings[i])->load();
+
+    const juce::String path = state.getProperty ("irFile").toString();
+    const juce::String namPath = state.getProperty ("namFile").toString();
+
+    resetSoundToDefaults();
+    apvts.replaceState (state);
+
+    if (keepRigSettings)
+        for (size_t i = 0; i < std::size (rigSettings); ++i)
+            setParameterValue (apvts, rigSettings[i], rig[i]);
+
+    updateOrder();
+    ++boardRevision;
+
+    if (! (path.isNotEmpty() && juce::File::isAbsolutePath (path) && juce::File (path).existsAsFile()
+           && loadImpulseResponse (juce::File (path))))
+        clearImpulseResponse();
+
+    if (namPath.isEmpty() || ! juce::File::isAbsolutePath (namPath) || loadNeuralModel (juce::File (namPath)).isNotEmpty())
+        clearNeuralModel();
+}
+
+//==============================================================================
+// Presets
+
+namespace
+{
+    struct FactoryPreset
+    {
+        const char* name;
+        const char* board;      // pedales colocados y encendidos, en orden
+        std::vector<std::pair<const char*, float>> values;
+    };
+
+    // Modelos: ampli 0 Clean American, 1 British Crunch, 2 High Gain, 3 Tweed, 4 Class A Chime, 5 Modern Lead,
+    //          6 Bass Tube, 7 Bass Clean, 8 Bass Rock. Pantalla 0 4x12, 1 2x12, 2 1x12, 3 Bass 8x10, 4 Bass 1x15.
+    const std::vector<FactoryPreset>& factoryPresets()
+    {
+        static const std::vector<FactoryPreset> presets {
+            { "Guitarra: Limpio cristalino", "comp,chorus,reverb",
+              { { "ampModel", 0 }, { "ampGain", 0.50f }, { "ampMaster", 0.65f }, { "ampTreble", 0.60f }, { "cabModel", 1 }, { "compSustain", 0.40f }, { "chorusMix", 0.45f }, { "reverbMix", 0.25f } } },
+            { "Guitarra: Blues con cuerpo", "od,reverb",
+              { { "ampModel", 3 }, { "ampGain", 0.50f }, { "ampMaster", 0.31f }, { "cabModel", 2 }, { "odModel", 1 }, { "odDrive", 0.45f }, { "odLevel", 0.60f }, { "reverbMix", 0.18f } } },
+            { "Guitarra: Brillo clase A", "trem,reverb",
+              { { "ampModel", 4 }, { "ampGain", 0.55f }, { "ampMaster", 0.41f }, { "cabModel", 1 }, { "tremRate", 0.45f }, { "tremDepth", 0.45f }, { "reverbMix", 0.22f } } },
+            { "Guitarra: Crunch británico", "gate",
+              { { "ampModel", 1 }, { "ampGain", 0.55f }, { "ampMid", 0.60f }, { "cabModel", 0 } } },
+            { "Guitarra: Rock clásico", "gate,od,delay",
+              { { "ampModel", 1 }, { "ampGain", 0.60f }, { "cabModel", 0 }, { "odModel", 0 }, { "odDrive", 0.30f }, { "odLevel", 0.75f }, { "delayTime", 340.0f }, { "delayMix", 0.20f } } },
+            { "Guitarra: Metal moderno", "gate,od",
+              { { "ampModel", 2 }, { "ampGain", 0.65f }, { "ampMaster", 0.64f }, { "ampBass", 0.55f }, { "ampMid", 0.40f }, { "ampTreble", 0.60f }, { "cabModel", 0 },
+                { "gateThreshold", -55.0f }, { "odModel", 0 }, { "odDrive", 0.10f }, { "odLevel", 0.80f } } },
+            { "Guitarra: Solista", "gate,delay,reverb",
+              { { "ampModel", 5 }, { "ampGain", 0.60f }, { "ampMaster", 0.66f }, { "ampMid", 0.65f }, { "cabModel", 0 }, { "delayTime", 420.0f }, { "delayFeedback", 0.35f }, { "delayMix", 0.25f }, { "reverbMix", 0.20f } } },
+            { "Guitarra: Fuzz psicodélico", "fuzz,phaser,reverb",
+              { { "ampModel", 0 }, { "ampGain", 0.35f }, { "cabModel", 0 }, { "fuzzModel", 0 }, { "fuzzAmount", 0.65f }, { "fuzzLevel", 0.75f }, { "phaserRate", 0.25f }, { "reverbMix", 0.25f } } },
+            { "Guitarra: Funk auto-wah", "comp,wah",
+              { { "ampModel", 0 }, { "ampGain", 0.55f }, { "ampMaster", 0.70f }, { "cabModel", 1 }, { "wahMode", 1 }, { "wahPosition", 0.70f }, { "wahQ", 0.45f }, { "compSustain", 0.75f } } },
+            { "Guitarra: Ambiente", "comp,chorus,delay,reverb",
+              { { "ampModel", 0 }, { "ampGain", 0.45f }, { "ampMaster", 0.65f }, { "cabModel", 1 }, { "chorusMix", 0.50f }, { "delayTime", 500.0f }, { "delayFeedback", 0.50f }, { "delayMix", 0.35f },
+                { "reverbSize", 0.85f }, { "reverbMix", 0.45f } } },
+            { "Bajo: Redondo a válvulas", "comp",
+              { { "ampModel", 6 }, { "ampGain", 0.50f }, { "cabModel", 3 }, { "compSustain", 0.45f } } },
+            { "Bajo: Limpio moderno", "comp,eq",
+              { { "ampModel", 7 }, { "ampGain", 0.50f }, { "ampMaster", 0.45f }, { "cabModel", 4 }, { "compSustain", 0.50f }, { "eqLow", 2.0f }, { "eqLowMid", -3.0f }, { "eqHigh", 3.0f } } },
+            { "Bajo: Rock", "comp,od",
+              { { "ampModel", 8 }, { "ampGain", 0.50f }, { "cabModel", 3 }, { "odModel", 3 }, { "odDrive", 0.40f } } },
+            { "Bajo: Fuzz", "fuzz",
+              { { "ampModel", 6 }, { "ampGain", 0.40f }, { "cabModel", 3 }, { "fuzzModel", 2 }, { "fuzzAmount", 0.60f } } },
+            { "Bajo: Sub octava", "comp,oct,chorus",
+              { { "ampModel", 7 }, { "ampGain", 0.50f }, { "ampMaster", 0.42f }, { "cabModel", 3 }, { "octSub", 0.50f }, { "octDry", 0.70f }, { "chorusMix", 0.35f } } },
+        };
+        return presets;
+    }
+}
+
+juce::StringArray EffectSuiteProcessor::getFactoryPresetNames()
+{
+    juce::StringArray names;
+    for (auto& preset : factoryPresets()) names.add (juce::String::fromUTF8 (preset.name));
+    return names;
+}
+
+bool EffectSuiteProcessor::loadFactoryPreset (const juce::String& name)
+{
+    for (auto& preset : factoryPresets())
+    {
+        if (name != juce::String::fromUTF8 (preset.name))
+            continue;
+
+        resetSoundToDefaults();
+        clearImpulseResponse();
+        clearNeuralModel();
+
+        juce::StringArray board;
+        board.addTokens (preset.board, ",", "");
+
+        for (auto& id : getAllPedalIds())
+            setParameterValue (apvts, id + "On", board.contains (id) ? 1.0f : 0.0f);
+
+        setParameterValue (apvts, "ampOn", 1.0f);
+        setParameterValue (apvts, "cabOn", 1.0f);
+
+        for (auto& value : preset.values)
+            setParameterValue (apvts, value.first, value.second);
+
+        apvts.state.setProperty ("preset", name, nullptr);
+        writeBoard (board);
+        return true;
+    }
+
+    return false;
+}
+
+juce::File EffectSuiteProcessor::getUserPresetFolder() const
+{
+    if (presetFolderOverride != juce::File())
+        return presetFolderOverride;
+
+    return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("EffectSuite").getChildFile ("Presets");
+}
+
+juce::File EffectSuiteProcessor::presetFile (const juce::String& name) const
+{
+    const auto legal = juce::File::createLegalFileName (name.trim());
+    return legal.isEmpty() ? juce::File() : getUserPresetFolder().getChildFile (legal + ".espreset");
+}
+
+juce::StringArray EffectSuiteProcessor::getUserPresetNames() const
+{
+    juce::StringArray names;
+
+    for (auto& file : getUserPresetFolder().findChildFiles (juce::File::findFiles, false, "*.espreset"))
+        names.add (file.getFileNameWithoutExtension());
+
+    names.sortNatural();
+    return names;
+}
+
+bool EffectSuiteProcessor::saveUserPreset (const juce::String& name)
+{
+    const auto file = presetFile (name);
+
+    if (file == juce::File() || ! file.getParentDirectory().createDirectory())
+        return false;
+
+    apvts.state.setProperty ("preset", file.getFileNameWithoutExtension(), nullptr);
+    auto state = apvts.copyState();
+    state.setProperty ("irFile", irFile.getFullPathName(), nullptr);
+    state.setProperty ("namFile", namFile.getFullPathName(), nullptr);
+
+    if (auto xml = state.createXml())
+        return xml->writeTo (file);
+
+    return false;
+}
+
+bool EffectSuiteProcessor::loadUserPreset (const juce::String& name)
+{
+    const auto file = presetFile (name);
+
+    if (file == juce::File() || ! file.existsAsFile())
+        return false;
+
+    auto xml = juce::XmlDocument::parse (file);
+    auto state = xml != nullptr ? juce::ValueTree::fromXml (*xml) : juce::ValueTree();
+
+    if (! state.isValid() || ! state.hasType (apvts.state.getType()))
+        return false;
+
+    state.setProperty ("preset", file.getFileNameWithoutExtension(), nullptr);
+    applyState (state, true);
+    return true;
+}
+
+bool EffectSuiteProcessor::deleteUserPreset (const juce::String& name)
+{
+    const auto file = presetFile (name);
+    return file != juce::File() && file.existsAsFile() && file.deleteFile();
+}
+
+juce::String EffectSuiteProcessor::getCurrentPresetName() const
+{
+    return apvts.state.getProperty ("preset").toString();
 }
 
 juce::AudioProcessorEditor* EffectSuiteProcessor::createEditor()

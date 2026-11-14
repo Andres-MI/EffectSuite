@@ -30,7 +30,11 @@ Funciona como aplicación independiente y como plugin (VST3 en Windows y Mac, AU
 
 Los modelos "Bass" de los pedales conservan los graves limpios y solo saturan el resto, para que el bajo no pierda cuerpo.
 
-Orden de la señal: puerta → wah → compresor → octavador → phaser → overdrive → distorsión → fuzz → amplificador → pantalla → ecualizador → flanger → chorus → tremolo → delay → reverb.
+Orden de la señal: pedales de antes del ampli → amplificador → pantalla → pedales de después del ampli. Dentro de cada tramo los pedales se pueden añadir, quitar y reordenar. Antes del ampli van puerta, wah, compresor, octavador, phaser, overdrive, distorsión y fuzz; después, ecualizador, flanger, chorus, tremolo, delay y reverb.
+
+## Presets
+
+Hay 15 presets de fábrica (10 de guitarra y 5 de bajo) y se pueden guardar los propios, que se escriben como archivos `.espreset` en `Documentos/EffectSuite/Presets`. Un preset guarda pedales, ampli, pantalla, IR y captura; no cambia los ajustes del equipo (ganancia y canal de entrada, nivel de salida y calidad).
 
 El procesado añade unas 4 muestras de latencia (0,1 ms). El resto de la latencia depende del driver y del tamaño de búfer de la interfaz de audio.
 
@@ -78,7 +82,7 @@ Los resultados quedan en `build/EffectSuite_artefacts/Release/`.
 
 ## Pruebas
 
-`EffectSuiteMeasure` comprueba el motor de audio sin tarjeta de sonido: respuesta del control de tonos frente al circuito analógico, distorsión, aliasing, latencia, coste de CPU, precisión del afinador, comportamiento de cada pedal y estabilidad.
+Hay dos programas de prueba, que también se ejecutan en cada subida. `EffectSuitePluginTest` comprueba la capa de plugin: guardado y carga del estado, pedalera, presets y comportamiento con distintos tamaños de bloque. `EffectSuiteMeasure` comprueba el motor de audio sin tarjeta de sonido: respuesta del control de tonos frente al circuito analógico, distorsión, aliasing, latencia, coste de CPU, precisión del afinador, comportamiento de cada pedal y estabilidad.
 
 ```bash
 ./build/EffectSuiteMeasure_artefacts/Release/EffectSuiteMeasure
@@ -91,7 +95,8 @@ Con `--render <carpeta>` escribe además archivos WAV de demostración con una g
 - `src/dsp/`: motor de audio (pedales, amplificador, control de tonos, afinador y cadena completa).
 - `src/PluginProcessor.*`: parámetros, estado y conexión con el host.
 - `src/PluginEditor.*`: interfaz gráfica.
-- `tests/Measure.cpp`: pruebas de medida.
+- `tests/Measure.cpp`: pruebas de medida del motor de audio.
+- `tests/PluginTest.cpp`: pruebas de la capa de plugin.
 
 ## Licencia de dependencias
 

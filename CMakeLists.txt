@@ -116,6 +116,24 @@ if(EFFECTSUITE_BUILD_TESTS)
         PUBLIC
             juce::juce_recommended_config_flags)
 
+    # Pruebas de la capa de plugin (parámetros, estado, pedalera y presets), sin ventana ni tarjeta de sonido
+    juce_add_console_app(EffectSuitePluginTest PRODUCT_NAME "EffectSuitePluginTest")
+    target_sources(EffectSuitePluginTest PRIVATE
+        tests/PluginTest.cpp
+        src/PluginProcessor.cpp
+        src/PluginEditor.cpp)
+    target_include_directories(EffectSuitePluginTest PRIVATE src)
+    target_compile_definitions(EffectSuitePluginTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
+        EFFECTSUITE_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
+    target_link_libraries(EffectSuitePluginTest
+        PRIVATE
+            juce::juce_audio_utils
+            juce::juce_dsp
+            $<LINK_LIBRARY:WHOLE_ARCHIVE,effectsuite_neural>
+        PUBLIC
+            juce::juce_recommended_config_flags)
+
     enable_testing()
     add_test(NAME measure COMMAND EffectSuiteMeasure)
+    add_test(NAME plugin COMMAND EffectSuitePluginTest)
 endif()

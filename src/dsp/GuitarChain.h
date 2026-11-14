@@ -57,7 +57,16 @@ struct ChainParams
     float outputDb = 0.0f;
     int   quality = 1;          // 0 = 2x, 1 = 4x, 2 = 8x
     bool  mute = false;         // silencia la salida (afinador), con fundido
+
+    // Orden de los pedales dentro de cada tramo: permutaciones de los índices de PrePedal y PostPedal
+    std::array<juce::uint8, 8> preOrder  { 0, 1, 2, 3, 4, 5, 6, 7 };
+    std::array<juce::uint8, 6> postOrder { 0, 1, 2, 3, 4, 5 };
 };
+
+/** Pedales de antes del ampli, en su orden por defecto. */
+enum PrePedal : juce::uint8 { preGate, preWah, preComp, preOct, prePhaser, preOd, preDist, preFuzz, numPrePedals };
+/** Pedales de después del ampli, en su orden por defecto. */
+enum PostPedal : juce::uint8 { postEq, postFlanger, postChorus, postTrem, postDelay, postReverb, numPostPedals };
 
 /** Fundido de 10 ms para encender y apagar un bloque sin chasquido. */
 struct Fade
@@ -95,11 +104,15 @@ inline bool isFiniteSample (float v) noexcept
 
 /** Cadena completa, entrada mono y salida estéreo:
 
-    puerta -> wah -> compresor -> octavador -> phaser -> overdrive -> distorsión -> fuzz
-           -> amplificador -> pantalla -> ecualizador -> flanger -> chorus -> tremolo -> delay -> reverb
+    [pedales de antes del ampli] -> amplificador -> pantalla -> [pedales de después del ampli]
 
-    Los pedales de saturación y el amplificador se procesan sobremuestreados para
-    que la distorsión no genere aliasing. Nada de lo que hace process() reserva memoria.
+    Antes: puerta, wah, compresor, octavador, phaser, overdrive, distorsión y fuzz.
+    Después: ecualizador, flanger, chorus, tremolo, delay y reverb.
+    Dentro de cada tramo el orden es libre (ChainParams::preOrder y postOrder).
+
+    Todo el tramo de antes del ampli y el amplificador se procesan sobremuestreados para
+    que la distorsión no genere aliasing, sea cual sea el orden. El tramo de después es
+    estéreo. Nada de lo que hace process() reserva memoria.
 
     Encender o apagar un bloque hace un fundido de 10 ms entre la señal con y sin él, y
     al encenderlo se limpia su estado. Cambiar de modelo o de calidad baja la salida a
@@ -131,16 +144,13 @@ public:
             os->reset();
         }
 
-        gate.prepare (fs);
-        compressor.prepare (fs);
         neural.prepare (fs, maxBlockSize);
         neuralIn.reset (fs, 0.02);
         neuralOut.reset (fs, 0.02);
-        wah.prepare (fs);
-        octaver.prepare (fs);
-        phaser.prepare (fs);
         equalizer.prepare (fs);
+        equalizerR.prepare (fs);
         flanger.prepare (fs);
+        flangerR.prepare (fs);
         tremolo.prepare (fs);
         chorus.prepare (fs);
         delay.prepare (fs);
@@ -176,8 +186,7 @@ public:
         scratchA.assign ((size_t) maxBlockSize, 0.0f);
         scratchB.assign ((size_t) maxBlockSize, 0.0f);
 
-        for (auto* f : { &gateFade, &wahFade, &compFade, &octFade, &phaserFade, &neuralFade, &cabFade, &eqFade,
-                         &flangerFade, &chorusFade, &tremFade, &delayFade, &reverbFade, &muteFade })
+        for (auto* f : { &neuralFade, &cabFade, &eqFade, &flangerFade, &chorusFade, &tremFade, &delayFade, &reverbFade, &muteFade })
             f->prepare (fs);
 
         dipStep = (float) (1.0 / (0.004 * fs));
@@ -228,7 +237,8 @@ public:
         // Ajustes que no se pueden cambiar de forma continua: se aplican con la salida a cero
         const Discrete wanted { oversamplerIndex (p.quality), p.odModel, p.distModel, p.fuzzModel, p.ampModel,
                                 juce::jlimit (0, numCabs - 1, p.cabModel), p.wahMode,
-                                neural.isLoaded(), userIrLoaded.load (std::memory_order_relaxed) };
+                                neural.isLoaded(), userIrLoaded.load (std::memory_order_relaxed),
+                                validOrder (p.preOrder), validOrder (p.postOrder) };
 
         if (firstBlock)
             applied = wanted;
@@ -242,12 +252,17 @@ public:
             activeQuality = quality;
             const double osRate = fs * (double) (2 << quality);
             oversamplers[(size_t) quality]->reset();
+            gate.prepare (osRate);
+            wah.prepare (osRate);
+            compressor.prepare (osRate);
+            octaver.prepare (osRate);
+            phaser.prepare (osRate);
             overdrive.prepare (osRate);
             distortion.prepare (osRate);
             fuzz.prepare (osRate);
             amp.prepare (osRate);
 
-            for (auto* f : { &odFade, &distFade, &fuzzFade, &ampFade })
+            for (auto* f : { &gateFade, &wahFade, &compFade, &octFade, &phaserFade, &odFade, &distFade, &fuzzFade, &ampFade })
                 f->prepare (osRate);
         }
 
@@ -260,7 +275,9 @@ public:
         octaver.setControls (p.octSub, p.octDry);
         phaser.setControls (p.phaserRate, p.phaserDepth, p.phaserFeedback);
         equalizer.setControls (p.eqLow, p.eqLowMid, p.eqHighMid, p.eqHigh);
+        equalizerR.setControls (p.eqLow, p.eqLowMid, p.eqHighMid, p.eqHigh);
         flanger.setControls (p.flangerRate, p.flangerDepth, p.flangerFeedback);
+        flangerR.setControls (p.flangerRate, p.flangerDepth, p.flangerFeedback);
         tremolo.setControls (p.tremRate, p.tremDepth);
         compressor.setControls (p.compSustain, p.compAttack, p.compLevel);
         overdrive.setControls (p.odDrive, p.odTone, p.odLevel);
@@ -325,48 +342,47 @@ public:
         if (ampFade.set (ampModelled))      amp.reset();
         neuralFade.set (ampNeural);
         if (cabFade.set (p.cabOn))          resetCabinet();
-        if (eqFade.set (p.eqOn))            equalizer.reset();
-        if (flangerFade.set (p.flangerOn))  flanger.reset();
+        if (eqFade.set (p.eqOn))            { equalizer.reset(); equalizerR.reset(); }
+        if (flangerFade.set (p.flangerOn))  { flanger.reset(); flangerR.reset(); }
         if (chorusFade.set (p.chorusOn))    chorus.reset();
         if (tremFade.set (p.tremOn))        tremolo.reset();
         if (delayFade.set (p.delayOn))      delay.reset();
         if (reverbFade.set (p.reverbOn))    reverb.reset();
         muteFade.set (p.mute);
 
-        // --- Antes del ampli, a la frecuencia de muestreo normal
+        // --- Entrada
         for (int i = 0; i < numSamples; ++i)
         {
-            float x = data[i];
-            if (! isFiniteSample (x)) x = 0.0f;
-            x *= inputGain.getNextValue();
-
-            if (gateFade.active())   x += gateFade.next()   * (gate.process (x) - x);
-            if (wahFade.active())    x += wahFade.next()    * (wah.process (x) - x);
-            if (compFade.active())   x += compFade.next()   * (compressor.process (x) - x);
-            if (octFade.active())    x += octFade.next()    * (octaver.process (x) - x);
-            if (phaserFade.active()) x += phaserFade.next() * (phaser.process (x) - x);
-            data[i] = x;
+            const float x = data[i];
+            data[i] = isFiniteSample (x) ? x * inputGain.getNextValue() : (inputGain.getNextValue(), 0.0f);
         }
 
-        // --- Saturaciones y ampli modelado, sobremuestreados
+        // --- Pedales de antes del ampli y ampli modelado, sobremuestreados y en el orden elegido
         juce::dsp::AudioBlock<float> block (&data, 1, (size_t) numSamples);
         auto& os = *oversamplers[(size_t) quality];
         auto osBlock = os.processSamplesUp (block);
         float* d = osBlock.getChannelPointer (0);
         const int osSamples = (int) osBlock.getNumSamples();
 
-        if (odFade.active() || distFade.active() || fuzzFade.active() || ampFade.active())
+        for (const auto pedal : applied.preOrder)
         {
-            for (int i = 0; i < osSamples; ++i)
+            switch (pedal)
             {
-                double x = d[i];
-                if (odFade.active())   x += odFade.next()   * (overdrive.process (x) - x);
-                if (distFade.active()) x += distFade.next() * (distortion.process (x) - x);
-                if (fuzzFade.active()) x += fuzzFade.next() * (fuzz.process (x) - x);
-                if (ampFade.active())  x += ampFade.next()  * (amp.process (x) - x);
-                d[i] = (float) x;
+                case preGate:   if (gateFade.active())   for (int i = 0; i < osSamples; ++i) d[i] += gateFade.next()   * (gate.process (d[i]) - d[i]); break;
+                case preWah:    if (wahFade.active())    for (int i = 0; i < osSamples; ++i) d[i] += wahFade.next()    * (wah.process (d[i]) - d[i]); break;
+                case preComp:   if (compFade.active())   for (int i = 0; i < osSamples; ++i) d[i] += compFade.next()   * (compressor.process (d[i]) - d[i]); break;
+                case preOct:    if (octFade.active())    for (int i = 0; i < osSamples; ++i) d[i] += octFade.next()    * (octaver.process (d[i]) - d[i]); break;
+                case prePhaser: if (phaserFade.active()) for (int i = 0; i < osSamples; ++i) d[i] += phaserFade.next() * (phaser.process (d[i]) - d[i]); break;
+                case preOd:     if (odFade.active())     for (int i = 0; i < osSamples; ++i) d[i] += odFade.next()     * ((float) overdrive.process (d[i]) - d[i]); break;
+                case preDist:   if (distFade.active())   for (int i = 0; i < osSamples; ++i) d[i] += distFade.next()   * ((float) distortion.process (d[i]) - d[i]); break;
+                case preFuzz:   if (fuzzFade.active())   for (int i = 0; i < osSamples; ++i) d[i] += fuzzFade.next()   * ((float) fuzz.process (d[i]) - d[i]); break;
+                default: break;
             }
         }
+
+        if (ampFade.active())
+            for (int i = 0; i < osSamples; ++i)
+                d[i] += ampFade.next() * ((float) amp.process (d[i]) - d[i]);
 
         os.processSamplesDown (block);
 
@@ -396,65 +412,87 @@ public:
             for (int i = 0; i < numSamples; ++i) data[i] += cabFade.next() * (wet[i] - data[i]);
         }
 
-        // --- Después del ampli
-        if (eqFade.active())
-            for (int i = 0; i < numSamples; ++i)
-                data[i] += eqFade.next() * (equalizer.process (data[i]) - data[i]);
+        // --- Pedales de después del ampli: estéreo y en el orden elegido
+        for (int i = 0; i < numSamples; ++i)
+            left[i] = right[i] = data[i];
 
-        if (flangerFade.active())
-            for (int i = 0; i < numSamples; ++i)
-                data[i] += flangerFade.next() * (flanger.process (data[i]) - data[i]);
-
-        if (chorusFade.active())
+        for (const auto pedal : applied.postOrder)
         {
-            for (int i = 0; i < numSamples; ++i)
+            switch (pedal)
             {
-                float l, r;
-                chorus.process (data[i], l, r);
-                const float m = chorusFade.next();
-                left[i]  = data[i] + m * (l - data[i]);
-                right[i] = data[i] + m * (r - data[i]);
-            }
-        }
-        else
-        {
-            for (int i = 0; i < numSamples; ++i)
-                left[i] = right[i] = data[i];
-        }
+                case postEq:
+                    if (eqFade.active())
+                        for (int i = 0; i < numSamples; ++i)
+                        {
+                            const float m = eqFade.next();
+                            left[i]  += m * (equalizer.process (left[i]) - left[i]);
+                            right[i] += m * (equalizerR.process (right[i]) - right[i]);
+                        }
+                    break;
 
-        if (tremFade.active())
-        {
-            for (int i = 0; i < numSamples; ++i)
-            {
-                const float g = 1.0f + tremFade.next() * (tremolo.nextGain() - 1.0f);
-                left[i] *= g;
-                right[i] *= g;
-            }
-        }
+                case postFlanger:
+                    if (flangerFade.active())
+                        for (int i = 0; i < numSamples; ++i)
+                        {
+                            const float m = flangerFade.next();
+                            left[i]  += m * (flanger.process (left[i]) - left[i]);
+                            right[i] += m * (flangerR.process (right[i]) - right[i]);
+                        }
+                    break;
 
-        if (delayFade.active())
-        {
-            for (int i = 0; i < numSamples; ++i)
-            {
-                const float wet = delayFade.next() * delay.process (0.5f * (left[i] + right[i]));
-                left[i] += wet;
-                right[i] += wet;
-            }
-        }
+                case postChorus:
+                    if (chorusFade.active())
+                        for (int i = 0; i < numSamples; ++i)
+                        {
+                            // El chorus se alimenta del centro y añade a cada lado su diferencia, sin estrechar el estéreo
+                            const float mid = 0.5f * (left[i] + right[i]);
+                            float l, r;
+                            chorus.process (mid, l, r);
+                            const float m = chorusFade.next();
+                            left[i]  += m * (l - mid);
+                            right[i] += m * (r - mid);
+                        }
+                    break;
 
-        if (reverbFade.active())
-        {
-            float* wetL = scratchA.data();
-            float* wetR = scratchB.data();
-            std::copy (left, left + numSamples, wetL);
-            std::copy (right, right + numSamples, wetR);
-            reverb.processStereo (wetL, wetR, numSamples);
+                case postTrem:
+                    if (tremFade.active())
+                        for (int i = 0; i < numSamples; ++i)
+                        {
+                            const float g = 1.0f + tremFade.next() * (tremolo.nextGain() - 1.0f);
+                            left[i] *= g;
+                            right[i] *= g;
+                        }
+                    break;
 
-            for (int i = 0; i < numSamples; ++i)
-            {
-                const float m = reverbFade.next();
-                left[i]  += m * (wetL[i] - left[i]);
-                right[i] += m * (wetR[i] - right[i]);
+                case postDelay:
+                    if (delayFade.active())
+                        for (int i = 0; i < numSamples; ++i)
+                        {
+                            const float wet = delayFade.next() * delay.process (0.5f * (left[i] + right[i]));
+                            left[i] += wet;
+                            right[i] += wet;
+                        }
+                    break;
+
+                case postReverb:
+                    if (reverbFade.active())
+                    {
+                        float* wetL = scratchA.data();
+                        float* wetR = scratchB.data();
+                        std::copy (left, left + numSamples, wetL);
+                        std::copy (right, right + numSamples, wetR);
+                        reverb.processStereo (wetL, wetR, numSamples);
+
+                        for (int i = 0; i < numSamples; ++i)
+                        {
+                            const float m = reverbFade.next();
+                            left[i]  += m * (wetL[i] - left[i]);
+                            right[i] += m * (wetR[i] - right[i]);
+                        }
+                    }
+                    break;
+
+                default: break;
             }
         }
 
@@ -503,8 +541,25 @@ private:
     {
         int quality = 1, odModel = 0, distModel = 0, fuzzModel = 0, ampModel = 0, cabModel = 0, wahMode = 0;
         bool neural = false, userIr = false;
+        std::array<juce::uint8, 8> preOrder  { 0, 1, 2, 3, 4, 5, 6, 7 };
+        std::array<juce::uint8, 6> postOrder { 0, 1, 2, 3, 4, 5 };
         bool operator== (const Discrete&) const = default;
     };
+
+    /** Devuelve el orden pedido si es una permutación válida; si no, el orden por defecto. */
+    template <size_t N>
+    static std::array<juce::uint8, N> validOrder (const std::array<juce::uint8, N>& order) noexcept
+    {
+        unsigned seen = 0;
+        for (auto v : order) if (v < N) seen |= 1u << v;
+
+        if (seen == (1u << N) - 1u)
+            return order;
+
+        std::array<juce::uint8, N> fallback;
+        for (size_t i = 0; i < N; ++i) fallback[i] = (juce::uint8) i;
+        return fallback;
+    }
 
     /** Techo de seguridad: lineal hasta -1 dBFS y a partir de ahí se curva sin llegar nunca a 0 dBFS. */
     static inline float ceiling (float x) noexcept
@@ -526,7 +581,7 @@ private:
     {
         gate.reset(); wah.reset(); compressor.reset(); octaver.reset(); phaser.reset();
         overdrive.reset(); distortion.reset(); fuzz.reset(); amp.reset();
-        equalizer.reset(); flanger.reset(); chorus.reset(); tremolo.reset(); delay.reset();
+        equalizer.reset(); equalizerR.reset(); flanger.reset(); flangerR.reset(); chorus.reset(); tremolo.reset(); delay.reset();
         reverb.reset();
         resetCabinet();
     }
@@ -552,8 +607,8 @@ private:
     Wah wah;
     Octaver octaver;
     Phaser phaser;
-    Equalizer equalizer;
-    Flanger flanger;
+    Equalizer equalizer, equalizerR;
+    Flanger flanger, flangerR;
     Tremolo tremolo;
     Chorus chorus;
     Delay delay;

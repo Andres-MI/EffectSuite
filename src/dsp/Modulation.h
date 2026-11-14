@@ -48,7 +48,8 @@ public:
         const double v2 = ic2 + a2 * ic1 + a3 * v3;
         ic1 = 2.0 * v1 - ic1;
         ic2 = 2.0 * v2 - ic2;
-        return (float) (1.2 * v1 * (0.3 + k));     // paso banda con el pico compensado según la resonancia
+        // Paso banda con pico de +14 dB sea cual sea la resonancia, más los graves a -8 dB como en un wah real
+        return (float) (5.0 * k * v1 + 0.4 * v2);
     }
 
 private:

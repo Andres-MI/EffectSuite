@@ -68,11 +68,38 @@ public:
     bool isOnBoard (const juce::String& pedalId) const;
     /** Coloca o quita un pedal. Al quitarlo también lo apaga. Hilo de mensajes. */
     void setOnBoard (const juce::String& pedalId, bool shouldBeOnBoard);
+    /** Pedales colocados en una fila (antes o después del ampli), en el orden en que suenan. */
+    juce::StringArray getBoardRow (bool afterAmp) const;
+    /** Mueve un pedal colocado a la posición newIndex dentro de su fila (0 = el primero). Hilo de mensajes. */
+    void movePedal (const juce::String& pedalId, int newIndex);
     /** Cambia cada vez que la pedalera cambia (también al cargar un estado): el editor lo consulta en su temporizador. */
     int getBoardRevision() const noexcept { return boardRevision.load(); }
 
+    //==========================================================================
+    // Presets. Un preset guarda pedales, ampli, pantalla, IR y captura; no toca los ajustes del
+    // equipo (ganancia y canal de entrada, nivel de salida, calidad). Todo en el hilo de mensajes.
+
+    static juce::StringArray getFactoryPresetNames();
+    juce::StringArray getUserPresetNames() const;
+    bool loadFactoryPreset (const juce::String& name);
+    bool loadUserPreset (const juce::String& name);
+    /** Guarda el sonido actual como preset de usuario (sobrescribe si existe). Devuelve false si no se pudo escribir. */
+    bool saveUserPreset (const juce::String& name);
+    bool deleteUserPreset (const juce::String& name);
+    /** Nombre del último preset cargado o guardado, o cadena vacía. */
+    juce::String getCurrentPresetName() const;
+    juce::File getUserPresetFolder() const;
+    /** Solo para pruebas: usa otra carpeta de presets de usuario. */
+    void setUserPresetFolder (const juce::File& folder) { presetFolderOverride = folder; }
+
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
+    void applyState (const juce::ValueTree&, bool keepRigSettings);
+    void resetSoundToDefaults();
+    void updateOrder();
+    juce::File presetFile (const juce::String& name) const;
+    juce::File presetFolderOverride;
+    std::atomic<juce::uint32> preOrderPacked { 0x76543210u }, postOrderPacked { 0x543210u };
     juce::StringArray readBoard() const;
     void writeBoard (const juce::StringArray&);
     std::atomic<int> boardRevision { 0 };
