@@ -20,11 +20,25 @@ juce::Colour contrastFor (juce::Colour c)
     return c.getPerceivedBrightness() > 0.62f ? darkInk : juce::Colours::white;
 }
 
-/** Enclosure colour of a bypassed pedal: nearly grey and dark, with only a hint of its hue. */
+/** Enclosure colour of a switched-off pedal: its own colour, only mildly darkened. */
 juce::Colour bypassedColour (juce::Colour c)
 {
-    return c.withMultipliedSaturation (0.3f).withBrightness (0.2f);
+    return c.withMultipliedSaturation (0.92f).withMultipliedBrightness (0.78f);
 }
+
+/** The colour as drawn: unchanged when on, mildly darkened when off. */
+juce::Colour shaded (juce::Colour c, bool on)
+{
+    return on ? c : c.withMultipliedBrightness (0.78f);
+}
+
+/** Chip fill of a switched-off block: a muted, darker version of its colour, never grey. */
+juce::Colour mutedChipColour (juce::Colour c)
+{
+    return c.withMultipliedSaturation (0.8f).withMultipliedBrightness (0.45f);
+}
+
+const juce::Colour ledRed { 0xffff2a1e };
 
 void drawLight (juce::Graphics& g, juce::Point<float> centre, float radius, juce::Colour colour, bool on)
 {
@@ -376,6 +390,8 @@ EffectSuiteEditor::Stompbox::Stompbox (EffectSuiteEditor& e, const PedalDef& def
     removeButton.onClick = [this] { editor.removeFromBoard (id); };
     addAndMakeVisible (removeButton);
 
+    setMouseCursor (juce::MouseCursor::DraggingHandCursor);   // the enclosure can be grabbed; children keep their own cursors
+
     lastOn = footSwitch.getToggleState();
     refresh();
 
@@ -393,6 +409,9 @@ EffectSuiteEditor::Stompbox::Stompbox (EffectSuiteEditor& e, const PedalDef& def
 
 void EffectSuiteEditor::Stompbox::mouseDown (const juce::MouseEvent& e)
 {
+    // Only reached for the enclosure itself: knobs, combo, footswitch and the x button take their own clicks
+    dragArmed = ! e.mods.isPopupMenu() && e.mods.isLeftButtonDown();
+
     if (! e.mods.isPopupMenu())
         return;
 
@@ -406,10 +425,39 @@ void EffectSuiteEditor::Stompbox::mouseDown (const juce::MouseEvent& e)
     });
 }
 
+void EffectSuiteEditor::Stompbox::mouseDrag (const juce::MouseEvent& e)
+{
+    if (! dragArmed)
+        return;
+
+    const auto pos = e.getEventRelativeTo (&editor).getPosition();
+
+    if (! dragging)
+    {
+        if (e.getDistanceFromDragStart() < juce::roundToInt (6.0f * juce::jmax (1.0f, scale)))
+            return;
+
+        dragging = true;
+        editor.beginPedalDrag (*this, pos);
+    }
+
+    editor.updatePedalDrag (*this, pos);
+}
+
+void EffectSuiteEditor::Stompbox::mouseUp (const juce::MouseEvent&)
+{
+    dragArmed = false;
+
+    if (dragging)
+    {
+        dragging = false;
+        editor.endPedalDrag (*this, true);
+    }
+}
+
 void EffectSuiteEditor::Stompbox::refresh()
 {
-    const auto body = lastOn ? colour : bypassedColour (colour);
-    const auto ink = lastOn ? contrastFor (body) : juce::Colour (0xff9aa0a8);
+    const auto ink = contrastFor (colour);
 
     for (auto& k : knobs)
     {
@@ -432,27 +480,28 @@ void EffectSuiteEditor::Stompbox::paint (juce::Graphics& g)
     g.fillRoundedRectangle (r, corner);
     g.setColour (body.darker (0.75f));
     g.drawRoundedRectangle (r, corner, juce::jmax (1.5f, 2.0f * scale));
-    g.setColour (juce::Colours::white.withAlpha (lastOn ? 0.3f : 0.08f));
+    g.setColour (juce::Colours::white.withAlpha (lastOn ? 0.3f : 0.12f));
     g.drawRoundedRectangle (r.reduced (2.5f * scale), corner - 2.0f * scale, 1.0f);
 
     // Name plate
-    const auto ink = lastOn ? contrastFor (body) : juce::Colour (0xff8b929c);
+    const auto ink = contrastFor (colour);
     g.setColour (ink);
     g.setFont (juce::FontOptions (juce::jmax (10.0f, 15.0f * scale), juce::Font::bold));
     g.drawFittedText (name, nameArea, juce::Justification::centred, 1, 0.7f);
     g.setColour (ink.withAlpha (0.35f));
     g.fillRect (nameArea.toFloat().withHeight (1.0f).reduced (4.0f * scale, 0.0f));
 
-    drawLight (g, ledArea.toFloat().getCentre(), 5.0f * scale, juce::Colour (0xffff2a1e), lastOn);
+    drawLight (g, ledArea.toFloat().getCentre(), 5.0f * scale, ledRed, lastOn);
 }
 
 void EffectSuiteEditor::Stompbox::paintOverChildren (juce::Graphics& g)
 {
-    // A bypassed pedal also has its controls in shadow; they stay usable
-    if (! lastOn)
+    // The pedal being dragged looks lifted: bright outline over a translucent body
+    if (dragging)
     {
-        g.setColour (juce::Colours::black.withAlpha (0.4f));
-        g.fillRoundedRectangle (controlsArea.toFloat().expanded (3.0f * scale), 6.0f * scale);
+        const auto r = getLocalBounds().toFloat().reduced (1.0f);
+        g.setColour (accentColour);
+        g.drawRoundedRectangle (r, 10.0f * scale, juce::jmax (2.0f, 3.0f * scale));
     }
 }
 
@@ -566,9 +615,8 @@ void EffectSuiteEditor::AmpUnit::refresh()
 {
     for (auto& k : knobs)
     {
-        k->label.setColour (juce::Label::textColourId, lastOn ? darkInk : juce::Colour (0xff9aa0a8));
-        k->slider.setColour (juce::Slider::rotarySliderFillColourId,
-                             lastOn ? juce::Colour (0xff8c2a1c) : juce::Colour (0xff80868e));
+        k->label.setColour (juce::Label::textColourId, darkInk);
+        k->slider.setColour (juce::Slider::rotarySliderFillColourId, shaded (juce::Colour (0xff8c2a1c), lastOn));
         k->slider.setColour (juce::Slider::rotarySliderOutlineColourId, juce::Colours::black.withAlpha (0.3f));
     }
 
@@ -649,12 +697,12 @@ void EffectSuiteEditor::AmpUnit::paint (juce::Graphics& g)
 
     // Grille with the badge
     const auto grille = grilleArea.toFloat();
-    drawGrille (g, grille, lastOn ? juce::Colour (0xff4a3a2a) : juce::Colour (0xff222325), 6.0f * s, 5.0f * s);
+    drawGrille (g, grille, shaded (juce::Colour (0xff4a3a2a), lastOn), 6.0f * s, 5.0f * s);
 
     auto badge = grille.withWidth (grille.getWidth() * 0.3f).reduced (12.0f * s, grille.getHeight() * 0.2f);
-    g.setColour (lastOn ? juce::Colour (0xffeadfbd) : juce::Colour (0xff5d6168));
+    g.setColour (shaded (juce::Colour (0xffeadfbd), lastOn));
     g.fillRoundedRectangle (badge, 3.0f * s);
-    g.setColour (lastOn ? darkInk : juce::Colour (0xff1c1d20));
+    g.setColour (darkInk);
     g.setFont (juce::FontOptions (juce::jmax (10.0f, 16.0f * s), juce::Font::bold));
     g.drawFittedText ("AMPLIFICADOR", badge.toNearestInt().reduced (4, 0), juce::Justification::centred, 1, 0.7f);
 
@@ -665,14 +713,14 @@ void EffectSuiteEditor::AmpUnit::paint (juce::Graphics& g)
                 juce::Justification::centredRight);
 
     // Piping between grille and control plate
-    g.setColour (lastOn ? juce::Colour (0xffc9a24a) : juce::Colour (0xff3d3f44));
+    g.setColour (shaded (juce::Colour (0xffc9a24a), lastOn));
     g.fillRect (grille.getX(), grille.getBottom() + 2.0f * s, grille.getWidth(), juce::jmax (1.5f, 2.0f * s));
 
-    // Control plate: cream when powered, dull grey when off
+    // Control plate: cream, a little darker when off
     const auto plate = plateArea.toFloat();
-    g.setGradientFill (juce::ColourGradient (lastOn ? juce::Colour (0xffe6d8ae) : juce::Colour (0xff46484d),
+    g.setGradientFill (juce::ColourGradient (shaded (juce::Colour (0xffe6d8ae), lastOn),
                                              0.0f, plate.getY(),
-                                             lastOn ? juce::Colour (0xffb9a672) : juce::Colour (0xff303236),
+                                             shaded (juce::Colour (0xffb9a672), lastOn),
                                              0.0f, plate.getBottom(), false));
     g.fillRoundedRectangle (plate, 5.0f * s);
     g.setColour (juce::Colours::black.withAlpha (0.6f));
@@ -680,7 +728,7 @@ void EffectSuiteEditor::AmpUnit::paint (juce::Graphics& g)
 
     drawLight (g, lightArea.toFloat().getCentre(), 7.0f * s, juce::Colour (0xffff7a1a), lastOn);
 
-    g.setColour (lastOn ? darkInk : juce::Colour (0xff9aa0a8));
+    g.setColour (darkInk);
     g.setFont (juce::FontOptions (smallFont (10.5f, s), juce::Font::bold));
     g.drawText ("POWER", juce::Rectangle<int> (lightArea.getX(), plateArea.getBottom() - juce::roundToInt (20 * s),
                                                lightArea.getWidth(), juce::roundToInt (16 * s)),
@@ -808,16 +856,16 @@ void EffectSuiteEditor::CabUnit::paint (juce::Graphics& g)
 
     // Speaker grille with the outline of the cone behind the cloth
     const auto grille = grilleArea.toFloat();
-    drawGrille (g, grille, lastOn ? juce::Colour (0xff4a3a2a) : juce::Colour (0xff222325), 6.0f * s, 5.0f * s);
+    drawGrille (g, grille, shaded (juce::Colour (0xff4a3a2a), lastOn), 6.0f * s, 5.0f * s);
     const float d = juce::jmin (grille.getWidth(), grille.getHeight()) * 0.82f;
     const auto cone = juce::Rectangle<float> (d, d).withCentre (grille.getCentre());
     g.setColour (juce::Colours::black.withAlpha (lastOn ? 0.4f : 0.3f));
     g.fillEllipse (cone);
-    g.setColour ((lastOn ? juce::Colour (0xffc9a24a) : juce::Colour (0xff55585e)).withAlpha (0.55f));
+    g.setColour (shaded (juce::Colour (0xffc9a24a), lastOn).withAlpha (0.55f));
     g.drawEllipse (cone, juce::jmax (1.5f, 2.0f * s));
     g.drawEllipse (cone.reduced (d * 0.12f), 1.0f);
     g.fillEllipse (cone.reduced (d * 0.36f));
-    g.setColour (lastOn ? juce::Colour (0xffc9a24a) : juce::Colour (0xff3d3f44));
+    g.setColour (shaded (juce::Colour (0xffc9a24a), lastOn));
     g.drawRoundedRectangle (grille, 5.0f * s, juce::jmax (1.5f, 2.0f * s));
 
     // Control panel
@@ -827,7 +875,7 @@ void EffectSuiteEditor::CabUnit::paint (juce::Graphics& g)
     g.setColour (juce::Colours::black.withAlpha (0.6f));
     g.drawRoundedRectangle (panel, 5.0f * s, 1.0f);
 
-    g.setColour (lastOn ? accentColour : juce::Colour (0xff6d747e));
+    g.setColour (shaded (accentColour, lastOn));
     g.setFont (juce::FontOptions (juce::jmax (10.0f, 16.0f * s), juce::Font::bold));
     g.drawText ("PANTALLA", titleArea, juce::Justification::centredLeft);
 
@@ -930,12 +978,13 @@ void EffectSuiteEditor::FlowStrip::paint (juce::Graphics& g)
         const bool on = chip.target->getToggleState();
         const float corner = chip.bounds.getHeight() * 0.3f;
 
-        g.setColour (on ? chip.colour : juce::Colour (0xff22252a));
+        const auto fill = on ? chip.colour : mutedChipColour (chip.colour);
+        g.setColour (fill);
         g.fillRoundedRectangle (chip.bounds, corner);
-        g.setColour (on ? chip.colour.brighter (0.6f) : juce::Colour (0xff3a3f49));
+        g.setColour (on ? chip.colour.brighter (0.6f) : chip.colour.withMultipliedBrightness (0.7f));
         g.drawRoundedRectangle (chip.bounds.reduced (0.5f), corner, on ? 1.5f : 1.0f);
 
-        g.setColour (on ? contrastFor (chip.colour) : juce::Colour (0xff6d747e));
+        g.setColour (on ? contrastFor (chip.colour) : contrastFor (fill).withAlpha (0.85f));
         g.drawFittedText (chip.text, chip.bounds.toNearestInt().reduced (2, 0), juce::Justification::centred, 1, 0.7f);
     }
 }
@@ -1038,12 +1087,33 @@ EffectSuiteEditor::EffectSuiteEditor (EffectSuiteProcessor& p)
     addAndMakeVisible (inMeter);
     addAndMakeVisible (outMeter);
 
+    // Preset bar
+    presetLabel.setText ("Preset", juce::dontSendNotification);
+    presetLabel.setJustificationType (juce::Justification::centredLeft);
+    presetLabel.setColour (juce::Label::textColourId, dimTextColour);
+    addAndMakeVisible (presetLabel);
+
+    presetBox.setTextWhenNothingSelected ("Sin preset");
+    presetBox.setTooltip ("Preset");
+    presetBox.onChange = [this] { presetChosen(); };
+    addAndMakeVisible (presetBox);
+
+    saveButton.setTooltip ("Guardar el sonido actual como preset");
+    saveButton.onClick = [this] { askPresetName(); };
+    addAndMakeVisible (saveButton);
+
+    deleteButton.setTooltip ("Borrar el preset de usuario seleccionado");
+    deleteButton.onClick = [this] { askDeletePreset(); };
+    deleteButton.setEnabled (false);
+    addAndMakeVisible (deleteButton);
+
     refreshBoard();
+    refreshPresetList();
 
     setResizable (true, true);
-    setResizeLimits (924, 630, 1980, 1350);
-    getConstrainer()->setFixedAspectRatio (1320.0 / 900.0);
-    setSize (1320, 900);
+    setResizeLimits (924, 655, 1980, 1404);
+    getConstrainer()->setFixedAspectRatio ((double) baseWidth / (double) baseHeight);
+    setSize (baseWidth, baseHeight);
 
     startTimerHz (30);
 }
@@ -1117,6 +1187,10 @@ void EffectSuiteEditor::refreshBoard()
 {
     lastBoardRevision = processor.getBoardRevision();
 
+    // A refresh ends any drag in progress (the layout is rebuilt below)
+    if (draggedPedal != nullptr)
+        endPedalDrag (*draggedPedal, false);
+
     bool preMissing = false, postMissing = false;
     for (auto* row : { &prePedals, &postPedals })
         for (auto& p : *row)
@@ -1128,17 +1202,18 @@ void EffectSuiteEditor::refreshBoard()
     addPre->setVisible (preMissing);
     addPost->setVisible (postMissing);
 
+    // Chips follow the signal order of the board
     flow->clearChips();
-    auto addChips = [this] (std::vector<std::unique_ptr<Stompbox>>& row)
+    auto addChips = [this] (bool afterAmp)
     {
-        for (auto& p : row)
-            if (p->isVisible())
+        for (auto& id : processor.getBoardRow (afterAmp))
+            if (auto* p = findPedal (id))
                 flow->addChip (p->getChipText(), p->getColour(), p->getSwitch());
     };
-    addChips (prePedals);
+    addChips (false);
     flow->addChip ("AMP", accentColour, amp->getSwitch());
     flow->addChip ("CAB", juce::Colour (0xffd9b06a), cab->getSwitch());
-    addChips (postPedals);
+    addChips (true);
 
     if (getWidth() > 0)
     {
@@ -1146,6 +1221,249 @@ void EffectSuiteEditor::refreshBoard()
         flow->resized();
     }
     repaint();
+}
+
+EffectSuiteEditor::Stompbox* EffectSuiteEditor::findPedal (const juce::String& id) const
+{
+    for (auto* row : { &prePedals, &postPedals })
+        for (auto& p : *row)
+            if (p->getId() == id)
+                return p.get();
+    return nullptr;
+}
+
+bool EffectSuiteEditor::isPostPedal (const Stompbox& pedal) const
+{
+    for (auto& p : postPedals)
+        if (p.get() == &pedal)
+            return true;
+    return false;
+}
+
+void EffectSuiteEditor::beginPedalDrag (Stompbox& pedal, juce::Point<int> editorPos)
+{
+    draggedPedal = &pedal;
+    dragTargetIndex = -1;
+    dragGrabX = editorPos.x - pedal.getX();
+    dropMarker = {};
+    pedal.setAlpha (0.6f);
+    pedal.setMouseCursor (juce::MouseCursor::DraggingHandCursor);
+    pedal.toFront (false);
+    pedal.repaint();
+}
+
+void EffectSuiteEditor::updatePedalDrag (Stompbox& pedal, juce::Point<int> editorPos)
+{
+    if (draggedPedal != &pedal)
+        return;
+
+    const bool post = isPostPedal (pedal);
+    const auto board = post ? postBoard : preBoard;
+    const auto oldMarker = dropMarker;
+    dropMarker = {};
+    dragTargetIndex = -1;
+
+    // The pedal follows the pointer sideways, inside its own row
+    pedal.setTopLeftPosition (juce::jlimit (board.getX(), juce::jmax (board.getX(), board.getRight() - pedal.getWidth()),
+                                            editorPos.x - dragGrabX), pedal.getY());
+
+    if (board.contains (editorPos))
+    {
+        std::vector<Stompbox*> others;
+        for (auto& id : processor.getBoardRow (post))
+            if (auto* p = findPedal (id); p != nullptr && p != &pedal)
+                others.push_back (p);
+
+        int index = 0;
+        for (auto* p : others)
+            if (p->getBounds().getCentreX() < editorPos.x)
+                ++index;
+
+        if (! others.empty())
+        {
+            const int gap = juce::roundToInt (8.0f * uiScale());
+            int x;
+            if (index == 0)                     x = others.front()->getX() - gap / 2;
+            else if (index == (int) others.size()) x = others.back()->getRight() + gap / 2;
+            else x = (others[(size_t) index - 1]->getRight() + others[(size_t) index]->getX()) / 2;
+
+            const int w = juce::jmax (4, juce::roundToInt (5.0f * uiScale()));
+            dropMarker = { x - w / 2, pedal.getY() - 2, w, pedal.getHeight() + 4 };
+            dragTargetIndex = index;
+        }
+    }
+
+    repaint (oldMarker.expanded (5));
+    repaint (dropMarker.expanded (5));
+}
+
+void EffectSuiteEditor::endPedalDrag (Stompbox& pedal, bool commit)
+{
+    if (draggedPedal != &pedal)
+        return;
+
+    const int target = dragTargetIndex;
+    draggedPedal = nullptr;
+    dragTargetIndex = -1;
+    dropMarker = {};
+    pedal.setAlpha (1.0f);
+    pedal.repaint();
+
+    if (commit && target >= 0)
+    {
+        const bool post = isPostPedal (pedal);
+        if (processor.getBoardRow (post).indexOf (pedal.getId()) != target)
+            processor.movePedal (pedal.getId(), target);
+    }
+
+    // Always re-lay the row out: puts a released pedal back in its slot and applies a move
+    refreshBoard();
+}
+
+void EffectSuiteEditor::refreshPresetList()
+{
+    if (presetBox.isPopupActive())
+        return;   // retried on the next tick (the name or revision check stays stale)
+
+    factoryNames = EffectSuiteProcessor::getFactoryPresetNames();
+    userNames = processor.getUserPresetNames();
+
+    constexpr int factoryBase = 1000, userBase = 2000;
+    presetBox.clear (juce::dontSendNotification);
+    presetBox.addSectionHeading (juce::CharPointer_UTF8 ("De f\xc3\xa1""brica"));
+    for (int i = 0; i < factoryNames.size(); ++i)
+        presetBox.addItem (factoryNames[i], factoryBase + i);
+
+    presetBox.addSectionHeading ("Mis presets");
+    for (int i = 0; i < userNames.size(); ++i)
+        presetBox.addItem (userNames[i], userBase + i);
+    if (userNames.isEmpty())
+    {
+        presetBox.addItem ("(ninguno)", 3000);
+        presetBox.setItemEnabled (3000, false);
+    }
+
+    syncPresetSelection();
+}
+
+void EffectSuiteEditor::syncPresetSelection()
+{
+    constexpr int factoryBase = 1000, userBase = 2000;
+    const auto name = processor.getCurrentPresetName();
+    shownPresetName = name;
+
+    const int f = name.isEmpty() ? -1 : factoryNames.indexOf (name);
+    const int u = name.isEmpty() ? -1 : userNames.indexOf (name);
+
+    // Factory and user presets may share a name: keep the section last chosen here when both exist
+    if (f >= 0 && u >= 0)      { /* presetIsUser decides */ }
+    else if (u >= 0)           presetIsUser = true;
+    else if (f >= 0)           presetIsUser = false;
+
+    int id = 0;
+    if (f >= 0 || u >= 0)
+        id = (presetIsUser && u >= 0) ? userBase + u : (f >= 0 ? factoryBase + f : userBase + u);
+
+    presetBox.setSelectedId (id, juce::dontSendNotification);
+    deleteButton.setEnabled (id >= userBase && id < 3000);
+}
+
+void EffectSuiteEditor::presetChosen()
+{
+    constexpr int factoryBase = 1000, userBase = 2000;
+    const int id = presetBox.getSelectedId();
+    bool ok = false;
+
+    if (id >= userBase && id < 3000 && id - userBase < userNames.size())
+    {
+        presetIsUser = true;
+        ok = processor.loadUserPreset (userNames[id - userBase]);
+    }
+    else if (id >= factoryBase && id < userBase && id - factoryBase < factoryNames.size())
+    {
+        presetIsUser = false;
+        ok = processor.loadFactoryPreset (factoryNames[id - factoryBase]);
+    }
+    else
+        return;
+
+    if (! ok)
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Preset",
+                                                "No se pudo cargar el preset");
+
+    refreshBoard();
+    cab->updateIrState();
+    amp->updateCaptureState();
+    syncPresetSelection();
+}
+
+void EffectSuiteEditor::askPresetName()
+{
+    const auto current = processor.getCurrentPresetName();
+    const bool prefill = presetIsUser && current.isNotEmpty() && userNames.contains (current);
+
+    auto* window = new juce::AlertWindow ("Guardar preset", "Nombre del preset:",
+                                          juce::MessageBoxIconType::NoIcon, this);
+    window->addTextEditor ("name", prefill ? current : juce::String(), {});
+    window->addButton ("Guardar", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    window->addButton ("Cancelar", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    juce::Component::SafePointer<EffectSuiteEditor> safe (this);
+    juce::Component::SafePointer<juce::AlertWindow> safeWindow (window);
+    window->enterModalState (true,
+                             juce::ModalCallbackFunction::create ([safe, safeWindow] (int result)
+    {
+        if (result != 1 || safe == nullptr || safeWindow == nullptr)
+            return;
+
+        const auto name = safeWindow->getTextEditorContents ("name").trim();
+        if (name.isNotEmpty())
+            safe->saveCurrentAs (name);
+    }), true);
+}
+
+void EffectSuiteEditor::saveCurrentAs (const juce::String& name)
+{
+    if (processor.saveUserPreset (name))
+    {
+        presetIsUser = true;
+        refreshPresetList();
+        syncPresetSelection();
+    }
+    else
+    {
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Guardar preset",
+                                                "No se pudo guardar el preset", {}, this);
+    }
+}
+
+void EffectSuiteEditor::askDeletePreset()
+{
+    const int id = presetBox.getSelectedId();
+    if (id < 2000 || id >= 3000 || id - 2000 >= userNames.size())
+        return;
+
+    const auto name = userNames[id - 2000];
+    juce::Component::SafePointer<EffectSuiteEditor> safe (this);
+
+    juce::AlertWindow::showAsync (juce::MessageBoxOptions()
+                                      .withIconType (juce::MessageBoxIconType::QuestionIcon)
+                                      .withTitle ("Borrar preset")
+                                      .withMessage (juce::String (juce::CharPointer_UTF8 ("\xc2\xbf""Borrar el preset \"")) + name + "\"?")
+                                      .withButton ("Borrar", 1)
+                                      .withButton ("Cancelar", 0)
+                                      .withAssociatedComponent (this),
+                                  [safe, name] (int result)
+    {
+        if (result != 1 || safe == nullptr)
+            return;
+
+        if (! safe->processor.deleteUserPreset (name))
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Borrar preset",
+                                                    "No se pudo borrar el preset", {}, safe.getComponent());
+        safe->presetIsUser = false;
+        safe->refreshPresetList();
+    });
 }
 
 void EffectSuiteEditor::removeFromBoard (const juce::String& id)
@@ -1240,8 +1558,12 @@ void EffectSuiteEditor::timerCallback()
         repaint (tunerArea);
     }
 
-    if (processor.getBoardRevision() != lastBoardRevision)
+    // Rebuild the board and the preset list only when something changed
+    const bool boardChanged = processor.getBoardRevision() != lastBoardRevision;
+    if (boardChanged && draggedPedal == nullptr)
         refreshBoard();
+    if ((boardChanged || processor.getCurrentPresetName() != shownPresetName) && draggedPedal == nullptr)
+        refreshPresetList();
 
     // The IR can also change through state restore
     if (processor.getImpulseResponseName() != cab->getShownIrName())
@@ -1268,6 +1590,10 @@ void EffectSuiteEditor::paint (juce::Graphics& g)
     g.setFont (juce::FontOptions (27.0f * scale, juce::Font::bold));
     g.drawText ("EffectSuite", topBar.withTrimmedLeft (juce::roundToInt (16 * scale)).withWidth (juce::roundToInt (170 * scale)),
                 juce::Justification::centredLeft);
+
+    // Preset strip
+    g.setColour (juce::Colour (0xff12141a));
+    g.fillRect (presetBar);
 
     // Tuner
     auto t = tunerArea.toFloat();
@@ -1324,6 +1650,18 @@ void EffectSuiteEditor::paint (juce::Graphics& g)
     }
 }
 
+void EffectSuiteEditor::paintOverChildren (juce::Graphics& g)
+{
+    if (! dropMarker.isEmpty())
+    {
+        const auto m = dropMarker.toFloat();
+        g.setColour (accentColour.withAlpha (0.35f));
+        g.fillRoundedRectangle (m.expanded (3.0f, 0.0f), m.getWidth());
+        g.setColour (accentColour);
+        g.fillRoundedRectangle (m, m.getWidth() * 0.5f);
+    }
+}
+
 void EffectSuiteEditor::resized()
 {
     auto area = getLocalBounds();
@@ -1373,6 +1711,18 @@ void EffectSuiteEditor::resized()
     }
 
     //==========================================================================
+    presetBar = area.removeFromTop (px (36));
+    {
+        auto pb = presetBar.reduced (px (14), px (4));
+        presetLabel.setBounds (pb.removeFromLeft (px (62)));
+        presetLabel.setFont (juce::FontOptions (smallFont (12.0f, s)));
+        presetBox.setBounds (pb.removeFromLeft (px (340)));
+        pb.removeFromLeft (px (10));
+        saveButton.setBounds (pb.removeFromLeft (px (96)));
+        pb.removeFromLeft (px (8));
+        deleteButton.setBounds (pb.removeFromLeft (px (96)));
+    }
+
     area.reduce (px (10), 0);
     area.removeFromTop (pad);
     flow->scale = s;
@@ -1396,10 +1746,11 @@ void EffectSuiteEditor::resized()
         const float tileFrac = 0.65f;
         const float maxW = (float) (r.getWidth() - gap * 5) / 6.0f;   // width of a pedal in a row of six
 
+        // Signal order from the processor, not the fixed order of the pedal list
         std::vector<Stompbox*> shown;
-        for (auto& p : pedals)
-            if (processor.isOnBoard (p->getId()))
-                shown.push_back (p.get());
+        for (auto& id : processor.getBoardRow (&pedals == &postPedals))
+            if (auto* p = findPedal (id))
+                shown.push_back (p);
 
         const bool hasTile = shown.size() < pedals.size();
         const int items = (int) shown.size() + (hasTile ? 1 : 0);

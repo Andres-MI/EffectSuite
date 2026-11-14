@@ -12,6 +12,7 @@ public:
     ~EffectSuiteEditor() override;
 
     void paint (juce::Graphics&) override;
+    void paintOverChildren (juce::Graphics&) override;
     void resized() override;
 
 private:
@@ -104,6 +105,8 @@ private:
         void paintOverChildren (juce::Graphics&) override;
         void resized() override;
         void mouseDown (const juce::MouseEvent&) override;
+        void mouseDrag (const juce::MouseEvent&) override;
+        void mouseUp (const juce::MouseEvent&) override;
 
         const juce::String& getId() const noexcept       { return id; }
         const juce::String& getChipText() const noexcept { return chipText; }
@@ -120,6 +123,7 @@ private:
         juce::String name, id, chipText;
         juce::Colour colour;
         bool sliders = false, hasCombo = false, lastOn = false;
+        bool dragArmed = false, dragging = false;
 
         std::vector<std::unique_ptr<Knob>> knobs;
         juce::ComboBox combo;
@@ -229,7 +233,24 @@ private:
     void removeFromBoard (const juce::String& id);
     void showAddMenu (bool preRow, juce::Component& target);
     void updateTuner();
-    float uiScale() const { return (float) getHeight() / 900.0f; }
+    float uiScale() const { return (float) getHeight() / (float) baseHeight; }
+
+    // Pedal drag and drop (driven by the Stompbox mouse handlers)
+    Stompbox* findPedal (const juce::String& id) const;
+    bool isPostPedal (const Stompbox&) const;
+    void beginPedalDrag (Stompbox&, juce::Point<int> editorPos);
+    void updatePedalDrag (Stompbox&, juce::Point<int> editorPos);
+    void endPedalDrag (Stompbox&, bool commit);
+
+    // Presets
+    void refreshPresetList();
+    void syncPresetSelection();
+    void presetChosen();
+    void askPresetName();
+    void saveCurrentAs (const juce::String& name);
+    void askDeletePreset();
+
+    static constexpr int baseWidth = 1320, baseHeight = 936;
 
     EffectSuiteProcessor& processor;
     RigLookAndFeel lnf;
@@ -251,7 +272,20 @@ private:
     std::unique_ptr<CabUnit> cab;
     std::unique_ptr<FlowStrip> flow;                       // points at the units' switches: destroyed first
 
-    juce::Rectangle<int> topBar, tunerArea, preBoard, ampBoard, postBoard;
+    // Preset bar
+    juce::Label presetLabel;
+    juce::ComboBox presetBox;
+    juce::TextButton saveButton { "Guardar" }, deleteButton { "Borrar" };
+    juce::StringArray factoryNames, userNames;
+    juce::String shownPresetName;
+    bool presetIsUser = false;
+
+    // Drag state
+    Stompbox* draggedPedal = nullptr;
+    int dragTargetIndex = -1, dragGrabX = 0;
+    juce::Rectangle<int> dropMarker;
+
+    juce::Rectangle<int> topBar, presetBar, tunerArea, preBoard, ampBoard, postBoard;
 
     // Tuner state
     int timerTick = 0;
