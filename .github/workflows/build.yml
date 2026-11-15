@@ -33,7 +33,7 @@ jobs:
         run: ./build/EffectSuitePluginTest_artefacts/Release/EffectSuitePluginTest
 
   windows:
-    name: Windows (aplicación + VST3)
+    name: Windows (aplicación + VST3 + instalador)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
@@ -41,19 +41,37 @@ jobs:
         run: |
           cmake -S . -B build -A x64 -DEFFECTSUITE_BUILD_TESTS=OFF
           cmake --build build --config Release --parallel
+      - name: Validar el plugin con pluginval
+        shell: pwsh
+        run: |
+          curl.exe -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip
+          Expand-Archive pluginval.zip -DestinationPath pluginval
+          ./pluginval/pluginval.exe --strictness-level 5 --validate-in-process --validate "build/EffectSuite_artefacts/Release/VST3/EffectSuite.vst3"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Empaquetar
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item build/EffectSuite_artefacts/Release/Standalone/EffectSuite.exe dist/
-          Copy-Item -Recurse build/EffectSuite_artefacts/Release/VST3/EffectSuite.vst3 dist/
+          New-Item -ItemType Directory -Force dist/EffectSuite-sin-instalador | Out-Null
+          Copy-Item build/EffectSuite_artefacts/Release/Standalone/EffectSuite.exe dist/EffectSuite-sin-instalador/
+          Copy-Item -Recurse build/EffectSuite_artefacts/Release/VST3/EffectSuite.vst3 dist/EffectSuite-sin-instalador/
+          Copy-Item docs/MANUAL.md dist/EffectSuite-sin-instalador/Manual.md
+      - name: Crear el instalador
+        shell: pwsh
+        run: |
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) {
+            choco install innosetup -y --no-progress
+            $env:PATH += ";C:\Program Files (x86)\Inno Setup 6"
+          }
+          $env:EFFECTSUITE_VERSION = (Select-String -Path CMakeLists.txt -Pattern 'project\(EffectSuite VERSION ([0-9.]+)').Matches[0].Groups[1].Value
+          iscc installer\windows.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v7
         with:
           name: EffectSuite-Windows
           path: dist
 
   macos:
-    name: macOS (aplicación + VST3 + AU, Intel y Apple Silicon)
+    name: macOS (aplicación + VST3 + AU + instalador, Intel y Apple Silicon)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v6
@@ -61,14 +79,33 @@ jobs:
         run: |
           cmake -S . -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DEFFECTSUITE_BUILD_TESTS=OFF
           cmake --build build --config Release --parallel
+      - name: Validar el plugin con pluginval
+        run: |
+          curl -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
+          unzip -q pluginval.zip
+          ./pluginval.app/Contents/MacOS/pluginval --strictness-level 5 --validate-in-process --validate build/EffectSuite_artefacts/Release/VST3/EffectSuite.vst3
       - name: Empaquetar
         run: |
-          mkdir dist
-          cp -R build/EffectSuite_artefacts/Release/Standalone/EffectSuite.app dist/
-          cp -R build/EffectSuite_artefacts/Release/VST3/EffectSuite.vst3 dist/
-          cp -R build/EffectSuite_artefacts/Release/AU/EffectSuite.component dist/
-          for bundle in dist/*; do codesign --force --deep --sign - "$bundle"; done
-          lipo -archs dist/EffectSuite.app/Contents/MacOS/EffectSuite
+          mkdir -p dist/EffectSuite-sin-instalador
+          cp -R build/EffectSuite_artefacts/Release/Standalone/EffectSuite.app dist/EffectSuite-sin-instalador/
+          cp -R build/EffectSuite_artefacts/Release/VST3/EffectSuite.vst3 dist/EffectSuite-sin-instalador/
+          cp -R build/EffectSuite_artefacts/Release/AU/EffectSuite.component dist/EffectSuite-sin-instalador/
+          for bundle in dist/EffectSuite-sin-instalador/*; do codesign --force --deep --sign - "$bundle"; done
+          cp docs/MANUAL.md dist/EffectSuite-sin-instalador/Manual.md
+          lipo -archs dist/EffectSuite-sin-instalador/EffectSuite.app/Contents/MacOS/EffectSuite
+      - name: Crear el instalador
+        run: |
+          version=$(sed -n 's/^project(EffectSuite VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          mkdir -p pkgroot/Applications pkgroot/Library/Audio/Plug-Ins/VST3 pkgroot/Library/Audio/Plug-Ins/Components
+          cp -R dist/EffectSuite-sin-instalador/EffectSuite.app pkgroot/Applications/
+          cp -R dist/EffectSuite-sin-instalador/EffectSuite.vst3 pkgroot/Library/Audio/Plug-Ins/VST3/
+          cp -R dist/EffectSuite-sin-instalador/EffectSuite.component pkgroot/Library/Audio/Plug-Ins/Components/
+          # Sin esto, macOS "reubica" la instalación sobre cualquier copia de la app que encuentre en el disco
+          pkgbuild --analyze --root pkgroot components.plist
+          count=$(/usr/libexec/PlistBuddy -c "Print" components.plist | grep -c "BundleIsRelocatable")
+          for i in $(seq 0 $((count - 1))); do /usr/libexec/PlistBuddy -c "Set :$i:BundleIsRelocatable false" components.plist; done
+          pkgbuild --root pkgroot --component-plist components.plist --identifier com.effectsuite.installer --version "$version" --install-location / dist/EffectSuite.pkg
+          pkgutil --payload-files dist/EffectSuite.pkg | head -20
           ditto -c -k dist EffectSuite-macOS.zip
       - uses: actions/upload-artifact@v7
         with:

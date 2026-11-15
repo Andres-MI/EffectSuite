@@ -40,19 +40,19 @@ El procesado añade unas 4 muestras de latencia (0,1 ms). El resto de la latenci
 
 ## Descargar
 
-Cada cambio se compila automáticamente. En la pestaña **Actions** del repositorio, abre la última ejecución correcta y descarga `EffectSuite-Windows` o `EffectSuite-macOS`.
+Cada cambio se compila automáticamente y el plugin se valida con [pluginval](https://github.com/Tracktion/pluginval). En la pestaña **Actions** del repositorio, abre la última ejecución correcta y descarga `EffectSuite-Windows` o `EffectSuite-macOS`. Dentro hay un instalador y una carpeta `EffectSuite-sin-instalador` con los mismos archivos sueltos.
+
+El manual de uso está en [`docs/MANUAL.md`](docs/MANUAL.md).
 
 ### Windows
 
-- `EffectSuite.exe` es la aplicación; no necesita instalación.
-- Para usarlo en un DAW, copia la carpeta `EffectSuite.vst3` a `C:\Program Files\Common Files\VST3`.
-- La primera vez Windows mostrará un aviso de SmartScreen porque el programa no está firmado: "Más información" → "Ejecutar de todas formas".
+- Ejecuta `EffectSuite-Setup.exe`. Instala la aplicación en `Archivos de programa\EffectSuite` y, si lo marcas, el plugin VST3 en `Archivos de programa\Common Files\VST3`.
+- El instalador no está firmado: Windows mostrará un aviso de SmartScreen. Pulsa "Más información" → "Ejecutar de todas formas".
 
 ### macOS (10.15 o posterior, Intel y Apple Silicon)
 
-- Copia `EffectSuite.app` a Aplicaciones.
-- Para un DAW: `EffectSuite.vst3` va en `~/Library/Audio/Plug-Ins/VST3` y `EffectSuite.component` en `~/Library/Audio/Plug-Ins/Components`.
-- Al no estar firmado con certificado de Apple, hay que quitar la marca de cuarentena una vez:
+- Abre `EffectSuite.pkg` con clic derecho → Abrir (al no estar firmado, el doble clic lo bloquea). Instala la aplicación en Aplicaciones, el VST3 en `/Library/Audio/Plug-Ins/VST3` y el AU en `/Library/Audio/Plug-Ins/Components`.
+- Si la aplicación no arranca por estar en cuarentena:
 
 ```bash
 xattr -cr /Applications/EffectSuite.app
@@ -104,8 +104,12 @@ Con `--render <carpeta>` escribe además archivos WAV de demostración con una g
 - `tests/Measure.cpp`: pruebas de medida del motor de audio.
 - `tests/PluginTest.cpp`: pruebas de la capa de plugin.
 
+## Licencia
+
+EffectSuite se distribuye bajo la licencia [AGPL-3.0](LICENSE), que es la que exige la versión gratuita de JUCE.
+
 ## Licencia de dependencias
 
 Las capturas `.nam` se reproducen con [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) (MIT) y [Eigen](https://eigen.tuxfamily.org) (MPL 2.0). El archivo `tests/data/wavenet_a1_standard.nam` procede de ese repositorio.
 
-EffectSuite usa [JUCE](https://juce.com), con licencia AGPLv3 o comercial. Distribuir binarios sin licencia comercial de JUCE implica publicar el código bajo AGPLv3.
+EffectSuite usa [JUCE](https://juce.com), con licencia AGPLv3 o comercial.
