@@ -102,8 +102,8 @@ jobs:
           cp -R dist/EffectSuite-sin-instalador/EffectSuite.component pkgroot/Library/Audio/Plug-Ins/Components/
           # Sin esto, macOS "reubica" la instalación sobre cualquier copia de la app que encuentre en el disco
           pkgbuild --analyze --root pkgroot components.plist
-          count=$(/usr/libexec/PlistBuddy -c "Print" components.plist | grep -c "BundleIsRelocatable")
-          for i in $(seq 0 $((count - 1))); do /usr/libexec/PlistBuddy -c "Set :$i:BundleIsRelocatable false" components.plist; done
+          for i in 0 1 2 3 4 5; do plutil -replace "$i.BundleIsRelocatable" -bool NO components.plist 2>/dev/null || break; done
+          plutil -p components.plist
           pkgbuild --root pkgroot --component-plist components.plist --identifier com.effectsuite.installer --version "$version" --install-location / dist/EffectSuite.pkg
           pkgutil --payload-files dist/EffectSuite.pkg | head -20
           ditto -c -k dist EffectSuite-macOS.zip
