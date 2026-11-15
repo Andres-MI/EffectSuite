@@ -117,6 +117,11 @@ APVTS::ParameterLayout EffectSuiteProcessor::createLayout()
                                           juce::StringArray { juce::String::fromUTF8 ("Mínimo (1x)"), "Eco (2x)", "Normal (4x)", "Alta (8x)" }, 2));
     layout.add (std::make_unique<Bool> (id ("tunerMute"), "Tuner Mute", false));
 
+    layout.add (std::make_unique<Bool> (id ("metroOn"), "Metronome On", false));
+    layout.add (std::make_unique<Float> (id ("metroBpm"), "Metronome Tempo", Range (40.0f, 240.0f, 1.0f), 100.0f,
+                                         juce::AudioParameterFloatAttributes().withLabel ("bpm")));
+    knob ("metroLevel", "Metronome Level", 0.5f);
+
     return layout;
 }
 
@@ -145,7 +150,8 @@ EffectSuiteProcessor::EffectSuiteProcessor()
                ref ("chorusOn"), ref ("chorusRate"), ref ("chorusDepth"), ref ("chorusMix"),
                ref ("delayOn"), ref ("delayTime"), ref ("delayFeedback"), ref ("delayMix"),
                ref ("reverbOn"), ref ("reverbSize"), ref ("reverbMix"),
-               ref ("outputLevel"), ref ("quality"), ref ("tunerMute") };
+               ref ("outputLevel"), ref ("quality"), ref ("tunerMute"),
+               ref ("metroOn"), ref ("metroBpm"), ref ("metroLevel") };
 
     updateOrder();
     startTimerHz (30);
@@ -171,7 +177,8 @@ bool EffectSuiteProcessor::isBusesLayoutSupported (const BusesLayout& layouts) c
 void EffectSuiteProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     maxBlock = juce::jmax (16, samplesPerBlock);
-    work.setSize (3, maxBlock, false, false, true);
+    work.setSize (4, maxBlock, false, false, true);     // 0 entrada mono, 1 y 2 salida, 3 copia limpia para grabar
+    clickPhase = 0.0; clickEnvelope = 0.0f; clickBeat = 0;
     chain.prepare (sampleRate, maxBlock);
     pitchTracker.prepare (sampleRate);
     loadMeasurer.reset (sampleRate, samplesPerBlock);
@@ -299,6 +306,10 @@ void EffectSuiteProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     float* m = work.getWritePointer (0);
     float* outL = work.getWritePointer (1);
     float* outR = work.getWritePointer (2);
+    float* direct = work.getWritePointer (3);
+    const bool metronome = params.metroOn->load() > 0.5f;
+    const double samplesPerBeat = getSampleRate() * 60.0 / juce::jlimit (40.0, 240.0, (double) params.metroBpm->load());
+    const float clickGain = 0.6f * params.metroLevel->load() * params.metroLevel->load();
     float inPeak = 0.0f, outPeak = 0.0f;
 
     for (int start = 0; start < numSamples; start += maxBlock)
@@ -318,7 +329,37 @@ void EffectSuiteProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
                              -juce::FloatVectorOperations::findMinimum (m, n));
         pitchTracker.push (m, n);
 
+        juce::FloatVectorOperations::copy (direct, m, n);
         chain.process (m, outL, outR, n, p);
+        recorder.write (direct, outL, outR, n);
+
+        if (metronome)
+        {
+            // Clic corto en cada tiempo, más agudo en el primero de cada cuatro. Va después de grabar: no queda en la toma
+            for (int i = 0; i < n; ++i)
+            {
+                if (clickPhase <= 0.0)
+                {
+                    clickPhase += samplesPerBeat;
+                    clickEnvelope = 1.0f;
+                    clickAngle = 0.0;
+                    clickAngleStep = juce::MathConstants<double>::twoPi * (clickBeat == 0 ? 1600.0 : 1000.0) / getSampleRate();
+                    clickBeat = (clickBeat + 1) % 4;
+                }
+
+                clickPhase -= 1.0;
+                const float click = clickGain * clickEnvelope * (float) std::sin (clickAngle);
+                clickAngle += clickAngleStep;
+                clickEnvelope *= 0.9985f;
+                outL[i] += click;
+                outR[i] += click;
+            }
+        }
+        else
+        {
+            clickPhase = 0.0;
+            clickBeat = 0;
+        }
 
         for (const float* out : { outL, outR })
             outPeak = juce::jmax (outPeak, juce::FloatVectorOperations::findMaximum (out, n),
@@ -342,6 +383,24 @@ void EffectSuiteProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 
     if (inPeak > inputPeak.load (std::memory_order_relaxed))   inputPeak.store (inPeak, std::memory_order_relaxed);
     if (outPeak > outputPeak.load (std::memory_order_relaxed)) outputPeak.store (outPeak, std::memory_order_relaxed);
+}
+
+juce::File EffectSuiteProcessor::getRecordingFolder() const
+{
+    if (recordingFolderOverride != juce::File())
+        return recordingFolderOverride;
+
+    return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("EffectSuite").getChildFile ("Grabaciones");
+}
+
+juce::String EffectSuiteProcessor::startRecording()
+{
+    return recorder.start (getRecordingFolder(), getSampleRate());
+}
+
+void EffectSuiteProcessor::stopRecording()
+{
+    recorder.stop();
 }
 
 void EffectSuiteProcessor::applyPendingMidi()
@@ -582,7 +641,7 @@ void EffectSuiteProcessor::setStateInformation (const void* data, int sizeInByte
 namespace
 {
     /** Ajustes del equipo, que un preset no debe cambiar. */
-    const char* const rigSettings[] { "inputGain", "inputMode", "outputLevel", "quality", "tunerMute" };
+    const char* const rigSettings[] { "inputGain", "inputMode", "outputLevel", "quality", "tunerMute", "metroOn", "metroBpm", "metroLevel" };
 
     bool isRigSetting (const juce::String& id)
     {

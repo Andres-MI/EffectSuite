@@ -2,6 +2,7 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "dsp/GuitarChain.h"
 #include "dsp/PitchTracker.h"
+#include "Recorder.h"
 
 class EffectSuiteProcessor final : public juce::AudioProcessor,
                                    private juce::Timer
@@ -81,6 +82,23 @@ public:
     int getBoardRevision() const noexcept { return boardRevision.load(); }
 
     //==========================================================================
+    // Grabación de tomas: cada toma son dos archivos WAV de 24 bits en la carpeta de grabaciones,
+    // "<fecha> toma.wav" (sonido procesado, estéreo) y "<fecha> toma DI.wav" (guitarra limpia, mono).
+    // El metrónomo se oye pero no se graba. Todo en el hilo de mensajes.
+
+    /** Empieza una toma. Devuelve una cadena vacía, o el motivo por el que no se pudo. */
+    juce::String startRecording();
+    void stopRecording();
+    bool isRecording() const noexcept { return recorder.isRecording(); }
+    double getRecordedSeconds() const noexcept { return recorder.getSecondsRecorded(); }
+    /** Archivo del sonido procesado de la última toma (puede no existir si aún no se ha grabado nada). */
+    juce::File getLastTake() const { return recorder.getLastTake(); }
+    juce::File getLastDirectTake() const { return recorder.getLastDirectTake(); }
+    juce::File getRecordingFolder() const;
+    /** Solo para pruebas: usa otra carpeta de grabaciones. */
+    void setRecordingFolder (const juce::File& folder) { recordingFolderOverride = folder; }
+
+    //==========================================================================
     // MIDI. Control Change 11 (expresión) o 4 (pedal) mueve la posición del wah; Program Change
     // carga un preset por número: primero los de fábrica en su orden y después los de usuario.
 
@@ -122,6 +140,13 @@ private:
 
     fx::GuitarChain chain;
     fx::PitchTracker pitchTracker;
+    Recorder recorder;
+    juce::File recordingFolderOverride;
+
+    // Metrónomo
+    double clickPhase = 0.0, clickAngle = 0.0, clickAngleStep = 0.0;
+    float clickEnvelope = 0.0f;
+    int clickBeat = 0;
     juce::AudioProcessLoadMeasurer loadMeasurer;
     juce::AudioBuffer<float> work;      // canal 0 = entrada mono, 1 y 2 = salida izquierda y derecha
     int maxBlock = 0;
@@ -151,7 +176,7 @@ private:
                            *chorusOn, *chorusRate, *chorusDepth, *chorusMix,
                            *delayOn, *delayTime, *delayFeedback, *delayMix,
                            *reverbOn, *reverbSize, *reverbMix,
-                           *outputLevel, *quality, *tunerMute;
+                           *outputLevel, *quality, *tunerMute, *metroOn, *metroBpm, *metroLevel;
     } params {};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EffectSuiteProcessor)

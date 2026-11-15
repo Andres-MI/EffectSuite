@@ -301,6 +301,86 @@ void testHostBehaviour()
 }
 }
 
+//==============================================================================
+void testRecording()
+{
+    std::printf ("\n5. Grabación de tomas y metrónomo\n");
+    const auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("effectsuite_test_takes");
+    folder.deleteRecursively();
+
+    EffectSuiteProcessor plugin;
+    plugin.setRecordingFolder (folder);
+    check (plugin.startRecording().isNotEmpty() && ! plugin.isRecording(), "sin audio en marcha no se puede grabar y se explica por qué");
+
+    const double fs = 48000.0;
+    const int block = 128;
+    plugin.setPlayConfigDetails (2, 2, fs, block);
+    plugin.prepareToPlay (fs, block);
+    set (plugin, "metroOn", 1); set (plugin, "metroBpm", 240.0f); set (plugin, "metroLevel", 1.0f);
+    set (plugin, "gateOn", 0);
+
+    const auto error = plugin.startRecording();
+    check (error.isEmpty() && plugin.isRecording(), "empezar una toma");
+
+    juce::AudioBuffer<float> buffer (2, block);
+    juce::MidiBuffer midi;
+    std::vector<float> input, heard;
+
+    for (int pos = 0; pos < 48000; pos += block)
+    {
+        for (int i = 0; i < block; ++i)
+        {
+            const float v = (float) (0.1 * std::sin (2.0 * juce::MathConstants<double>::pi * 220.0 * (pos + i) / fs));
+            buffer.setSample (0, i, v);
+            buffer.setSample (1, i, 0.0f);
+            input.push_back (v);
+        }
+
+        plugin.processBlock (buffer, midi);
+        for (int i = 0; i < block; ++i) heard.push_back (buffer.getSample (0, i));
+    }
+
+    const double seconds = plugin.getRecordedSeconds();
+    plugin.stopRecording();
+    check (! plugin.isRecording() && std::abs (seconds - (double) input.size() / fs) < 0.01, "parar la toma; el contador marca la duración real");
+
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> wet (formats.createReaderFor (plugin.getLastTake()));
+    std::unique_ptr<juce::AudioFormatReader> dry (formats.createReaderFor (plugin.getLastDirectTake()));
+    const bool readable = wet != nullptr && dry != nullptr;
+    check (readable && wet->numChannels == 2 && dry->numChannels == 1 && wet->bitsPerSample == 24 && dry->bitsPerSample == 24
+           && wet->lengthInSamples == (juce::int64) input.size() && dry->lengthInSamples == (juce::int64) input.size()
+           && std::abs (wet->sampleRate - fs) < 1.0,
+           "quedan dos WAV de 24 bits: procesado en estéreo y guitarra limpia en mono, con la duración exacta");
+
+    if (readable)
+    {
+        juce::AudioBuffer<float> wetData (2, (int) input.size()), dryData (1, (int) input.size());
+        wet->read (&wetData, 0, (int) input.size(), 0, true, true);
+        dry->read (&dryData, 0, (int) input.size(), 0, true, false);
+
+        double dryError = 0.0, wetLevel = 0.0, clickDifference = 0.0;
+        for (size_t i = 0; i < input.size(); ++i)
+        {
+            dryError = std::max (dryError, (double) std::abs (dryData.getSample (0, (int) i) - input[i]));
+            wetLevel = std::max (wetLevel, (double) std::abs (wetData.getSample (0, (int) i)));
+            clickDifference = std::max (clickDifference, (double) std::abs (heard[i] - wetData.getSample (0, (int) i)));
+        }
+
+        check (dryError < 1e-4, "la guitarra limpia grabada es exactamente lo que entró");
+        check (wetLevel > 0.01, "el sonido procesado grabado no está vacío");
+        check (clickDifference > 0.05, "el metrónomo se oye pero no queda grabado en la toma");
+    }
+
+    // Dos tomas seguidas no se pisan
+    plugin.startRecording();
+    const auto second = plugin.getLastTake();
+    plugin.stopRecording();
+    check (folder.findChildFiles (juce::File::findFiles, false, "*.wav").size() == 4 && second.existsAsFile(), "cada toma tiene sus propios archivos");
+    folder.deleteRecursively();
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI gui;
@@ -310,6 +390,7 @@ int main()
     testBoard();
     testPresets();
     testHostBehaviour();
+    testRecording();
 
     std::printf ("\n%s\n", failures == 0 ? "TODAS LAS PRUEBAS PASAN" : "HAY PRUEBAS QUE FALLAN");
     return failures == 0 ? 0 : 1;
