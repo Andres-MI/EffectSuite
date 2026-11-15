@@ -754,6 +754,35 @@ void testNeural()
     std::printf ("   coste con la captura: %.1f %% de un núcleo (bloques de 64 muestras)\n", 10.0 * elapsed);
     check (elapsed < 5.0, "la captura estándar corre en tiempo real con margen (< 50 % de un núcleo)");
 
+    // A otras frecuencias de muestreo la captura se remuestrea y debe sonar igual que a la suya
+    {
+        const int order = 15, n = 1 << order;
+        double fundamental[3] {}, third[3] {};
+        bool resampledFlags[3] {};
+        int index = 0;
+
+        for (double rate : { 48000.0, 44100.0, 96000.0 })
+        {
+            fx::GuitarChain other;
+            other.prepare (rate, 64);
+            resampledFlags[index] = other.loadNeuralModel (path).resampled;
+            const int bin = (int) std::lround (220.0 * n / rate);
+            auto tone = sine (bin * rate / n, rate, 0.2, (size_t) (3 * n));
+            runChain (other, tone, p);
+            const auto spec = powerSpectrum (tone.data() + 2 * n, order);
+            fundamental[index] = 10.0 * std::log10 (spec[(size_t) bin]);
+            third[index] = 10.0 * std::log10 (spec[(size_t) (3 * bin)]);
+            ++index;
+        }
+
+        std::printf ("   fundamental y 3.er armónico: 48 kHz %.1f / %.1f dB, 44,1 kHz %.1f / %.1f dB, 96 kHz %.1f / %.1f dB\n",
+                     fundamental[0], third[0], fundamental[1], third[1], fundamental[2], third[2]);
+        check (! resampledFlags[0] && resampledFlags[1] && resampledFlags[2], "solo se remuestrea cuando el audio va a otra frecuencia que la captura");
+        check (std::abs (fundamental[1] - fundamental[0]) < 1.0 && std::abs (fundamental[2] - fundamental[0]) < 1.0
+               && std::abs (third[1] - third[0]) < 2.5 && std::abs (third[2] - third[0]) < 2.5,
+               "la captura suena igual a 44,1 y 96 kHz que a 48 kHz (nivel y armónicos)");
+    }
+
     // Al quitarla vuelve el ampli modelado
     chain.clearNeuralModel();
     auto z = sine (220.0, fs, 0.2, 96000);

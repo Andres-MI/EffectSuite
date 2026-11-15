@@ -148,7 +148,7 @@ EffectSuiteProcessor::EffectSuiteProcessor()
                ref ("outputLevel"), ref ("quality"), ref ("tunerMute") };
 
     updateOrder();
-    startTimerHz (10);
+    startTimerHz (30);
 }
 
 EffectSuiteProcessor::~EffectSuiteProcessor()
@@ -189,7 +189,9 @@ fx::ChainParams EffectSuiteProcessor::readParams() const
     p.gateThresholdDb = params.gateThreshold->load();
     p.wahOn           = params.wahOn->load() > 0.5f;
     p.wahMode         = (int) params.wahMode->load();
-    p.wahPosition     = params.wahPosition->load();
+    // Mientras el valor del pedal MIDI no se haya trasladado al parámetro, manda el pedal: así el wah responde al instante
+    p.wahPosition     = midiWahPending.load (std::memory_order_relaxed) ? midiWah.load (std::memory_order_relaxed)
+                                                                         : params.wahPosition->load();
     p.wahQ            = params.wahQ->load();
     p.octOn           = params.octOn->load() > 0.5f;
     p.octSub          = params.octSub->load();
@@ -260,8 +262,23 @@ fx::ChainParams EffectSuiteProcessor::readParams() const
     return p;
 }
 
-void EffectSuiteProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void EffectSuiteProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
+    for (const auto metadata : midi)
+    {
+        const auto message = metadata.getMessage();
+
+        if (message.isController() && (message.getControllerNumber() == 11 || message.getControllerNumber() == 4))
+        {
+            midiWah.store ((float) message.getControllerValue() / 127.0f);
+            midiWahPending.store (true);
+        }
+        else if (message.isProgramChange())
+        {
+            midiProgram.store (message.getProgramChangeNumber());
+        }
+    }
+
     juce::ScopedNoDenormals noDenormals;
     juce::AudioProcessLoadMeasurer::ScopedTimer loadTimer (loadMeasurer, buffer.getNumSamples());
 
@@ -327,8 +344,50 @@ void EffectSuiteProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     if (outPeak > outputPeak.load (std::memory_order_relaxed)) outputPeak.store (outPeak, std::memory_order_relaxed);
 }
 
+void EffectSuiteProcessor::applyPendingMidi()
+{
+    if (midiWahPending.load())
+    {
+        if (auto* position = apvts.getParameter ("wahPosition"))
+            position->setValueNotifyingHost (midiWah.load());
+
+        midiWahPending.store (false);
+    }
+
+    const int program = midiProgram.exchange (-1);
+
+    if (program >= 0)
+    {
+        bool factory = false;
+        const auto name = getPresetNameForProgram (program, factory);
+
+        if (name.isNotEmpty())
+        {
+            if (factory) loadFactoryPreset (name);
+            else         loadUserPreset (name);
+        }
+    }
+}
+
+juce::String EffectSuiteProcessor::getPresetNameForProgram (int program, bool& isFactory) const
+{
+    const auto factory = getFactoryPresetNames();
+    isFactory = program < factory.size();
+
+    if (program < 0)
+        return {};
+
+    if (isFactory)
+        return factory[program];
+
+    const auto user = getUserPresetNames();
+    return user[program - factory.size()];      // cadena vacía si no existe
+}
+
 void EffectSuiteProcessor::timerCallback()
 {
+    applyPendingMidi();
+
     if (latencyChanged.exchange (false))
         setLatencySamples (juce::roundToInt (chain.getLatencySamples (latencyQuality.load())));
 }
@@ -500,14 +559,8 @@ juce::String EffectSuiteProcessor::getNeuralModelName() const
 
 juce::String EffectSuiteProcessor::getNeuralModelNote() const
 {
-    const double rate = getSampleRate();
-
-    if (namFile == juce::File() || namSampleRate <= 0.0 || rate <= 0.0 || std::abs (rate - namSampleRate) < 1.0)
-        return {};
-
-    return juce::String::fromUTF8 ("Captura hecha a ") + juce::String (namSampleRate / 1000.0, 1)
-         + juce::String::fromUTF8 (" kHz y el audio va a ") + juce::String (rate / 1000.0, 1)
-         + juce::String::fromUTF8 (" kHz: sonará distinto");
+    // Las capturas se remuestrean a la frecuencia del audio, así que ya no hay nada que avisar
+    return {};
 }
 
 void EffectSuiteProcessor::getStateInformation (juce::MemoryBlock& destData)

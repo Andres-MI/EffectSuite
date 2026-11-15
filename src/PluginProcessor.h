@@ -19,7 +19,7 @@ public:
     bool hasEditor() const override { return true; }
 
     const juce::String getName() const override { return "EffectSuite"; }
-    bool acceptsMidi() const override { return false; }
+    bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     double getTailLengthSeconds() const override { return 6.0; }
 
@@ -81,6 +81,15 @@ public:
     int getBoardRevision() const noexcept { return boardRevision.load(); }
 
     //==========================================================================
+    // MIDI. Control Change 11 (expresión) o 4 (pedal) mueve la posición del wah; Program Change
+    // carga un preset por número: primero los de fábrica en su orden y después los de usuario.
+
+    /** Aplica en el hilo de mensajes lo recibido por MIDI (lo llama el temporizador; público para las pruebas). */
+    void applyPendingMidi();
+    /** Preset que corresponde a un número de programa MIDI, o cadena vacía. */
+    juce::String getPresetNameForProgram (int program, bool& isFactory) const;
+
+    //==========================================================================
     // Presets. Un preset guarda pedales, ampli, pantalla, IR y captura; no toca los ajustes del
     // equipo (ganancia y canal de entrada, nivel de salida, calidad). Todo en el hilo de mensajes.
 
@@ -118,6 +127,9 @@ private:
     int maxBlock = 0;
     std::atomic<int> latencyQuality { -1 };
     std::atomic<bool> latencyChanged { false };
+    std::atomic<float> midiWah { 0.0f };
+    std::atomic<bool> midiWahPending { false };
+    std::atomic<int> midiProgram { -1 };
     juce::File irFile, namFile;
     double namSampleRate = 0.0;
 

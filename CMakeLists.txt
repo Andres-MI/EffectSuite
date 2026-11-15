@@ -68,10 +68,10 @@ if(EFFECTSUITE_BUILD_PLUGIN)
         PLUGIN_CODE Efs1
         FORMATS ${EFFECTSUITE_FORMATS}
         IS_SYNTH FALSE
-        NEEDS_MIDI_INPUT FALSE
+        NEEDS_MIDI_INPUT TRUE
         NEEDS_MIDI_OUTPUT FALSE
         VST3_CATEGORIES Fx Distortion
-        AU_MAIN_TYPE kAudioUnitType_Effect
+        AU_MAIN_TYPE kAudioUnitType_MusicEffect
         MICROPHONE_PERMISSION_ENABLED TRUE
         MICROPHONE_PERMISSION_TEXT "EffectSuite necesita la entrada de audio para procesar la guitarra."
         COPY_PLUGIN_AFTER_BUILD FALSE)

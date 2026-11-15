@@ -275,6 +275,29 @@ void testHostBehaviour()
     restored.setStateInformation (block.getData(), (int) block.getSize());
     check (restored.getNeuralModelName() == "wavenet_a1_standard", "la captura se recupera al recargar el proyecto");
     check (withCapture.loadNeuralModel (juce::File ("/no/existe.nam")).isNotEmpty(), "una captura inexistente devuelve un error");
+
+    // MIDI: pedal de expresión para el wah y cambio de preset
+    EffectSuiteProcessor midiPlugin;
+    midiPlugin.setUserPresetFolder (juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("effectsuite_test_empty"));
+    midiPlugin.setPlayConfigDetails (2, 2, 48000.0, 128);
+    midiPlugin.prepareToPlay (48000.0, 128);
+    juce::AudioBuffer<float> buffer (2, 128);
+    buffer.clear();
+    juce::MidiBuffer messages;
+    messages.addEvent (juce::MidiMessage::controllerEvent (1, 11, 96), 0);
+    midiPlugin.processBlock (buffer, messages);
+    midiPlugin.applyPendingMidi();
+    check (std::abs (value (midiPlugin, "wahPosition") - 96.0f / 127.0f) < 0.01f, "el controlador MIDI 11 mueve la posición del wah");
+    messages.clear();
+    messages.addEvent (juce::MidiMessage::programChange (1, 5), 10);
+    midiPlugin.processBlock (buffer, messages);
+    midiPlugin.applyPendingMidi();
+    check (midiPlugin.getCurrentPresetName() == EffectSuiteProcessor::getFactoryPresetNames()[5], "un cambio de programa MIDI carga el preset de ese número");
+    messages.clear();
+    messages.addEvent (juce::MidiMessage::programChange (1, 120), 0);
+    midiPlugin.processBlock (buffer, messages);
+    midiPlugin.applyPendingMidi();
+    check (midiPlugin.getCurrentPresetName() == EffectSuiteProcessor::getFactoryPresetNames()[5], "un número de programa sin preset no cambia nada");
 }
 }
 
