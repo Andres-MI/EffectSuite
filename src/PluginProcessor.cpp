@@ -604,6 +604,13 @@ juce::StringArray EffectSuiteProcessor::getBoardRow (bool afterAmp) const
         if (all.contains (id) && (all.indexOf (id) >= fx::numPrePedals) == afterAmp)
             row.addIfNotAlreadyThere (id);
 
+    // El looper suena siempre al final, así que también se muestra el último
+    if (row.contains ("looper"))
+    {
+        row.removeString ("looper");
+        row.add ("looper");
+    }
+
     return row;
 }
 
@@ -616,8 +623,11 @@ void EffectSuiteProcessor::movePedal (const juce::String& pedalId, int newIndex)
 
     const bool afterAmp = all.indexOf (pedalId) >= fx::numPrePedals;
     auto row = getBoardRow (afterAmp);
+    if (pedalId == "looper")
+        return;
+
     row.removeString (pedalId);
-    row.insert (juce::jlimit (0, row.size(), newIndex), pedalId);
+    row.insert (juce::jlimit (0, row.size() - (row.contains ("looper") ? 1 : 0), newIndex), pedalId);
 
     auto board = afterAmp ? getBoardRow (false) : row;
     board.addArray (afterAmp ? row : getBoardRow (true));

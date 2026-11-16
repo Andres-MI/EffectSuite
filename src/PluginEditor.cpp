@@ -113,6 +113,7 @@ struct EffectSuiteEditor::PedalDef
     const char* comboParamId;   // nullptr if the pedal has no selector
     std::vector<KnobDef> knobs;
     bool sliders = false;       // vertical sliders (graphic EQ) instead of knobs
+    bool looper = false;        // looper layout and behaviour
 };
 
 //==============================================================================
@@ -441,7 +442,7 @@ void EffectSuiteEditor::AddTile::paint (juce::Graphics& g)
 //==============================================================================
 EffectSuiteEditor::Stompbox::Stompbox (EffectSuiteEditor& e, const PedalDef& def)
     : editor (e), name (juce::CharPointer_UTF8 (def.name)),
-      id (juce::String (def.onParamId).dropLastCharacters (2)), chipText (def.chip), colour (def.colour), sliders (def.sliders)
+      id (juce::String (def.onParamId).dropLastCharacters (2)), chipText (def.chip), colour (def.colour), sliders (def.sliders), looper (def.looper)
 {
     for (auto& k : def.knobs)
         knobs.push_back (editor.createKnob (*this, k.label, k.paramId, k.style, sliders));
@@ -454,13 +455,32 @@ EffectSuiteEditor::Stompbox::Stompbox (EffectSuiteEditor& e, const PedalDef& def
         comboAttachment = std::make_unique<ComboAttachment> (editor.processor.apvts, def.comboParamId, combo);
     }
 
-    footSwitch.setTooltip (name);
+    footSwitch.setTooltip (looper ? juce::String::fromUTF8 ("Grabar / reproducir / sobregrabar")
+                                  : name);
     addAndMakeVisible (footSwitch);
-    switchAttachment = std::make_unique<ButtonAttachment> (editor.processor.apvts, def.onParamId, footSwitch);
+    if (! looper)
+        switchAttachment = std::make_unique<ButtonAttachment> (editor.processor.apvts, def.onParamId, footSwitch);
 
     removeButton.setTooltip (juce::CharPointer_UTF8 ("Quitar de la pedalera"));
     removeButton.onClick = [this] { editor.removeFromBoard (id); };
     addAndMakeVisible (removeButton);
+
+    if (looper)
+    {
+        // Not an on/off pedal: it is "on" while it is on the board
+        footSwitch.setClickingTogglesState (false);
+        footSwitch.onClick = [this] { editor.processor.looperPress(); updateLooper(); editor.blockStateChanged(); };
+            stopButton.setTooltip (juce::String::fromUTF8 ("Parar la reproducción"));
+        stopButton.onClick = [this] { editor.processor.looperStop(); updateLooper(); editor.blockStateChanged(); };
+        clearButton.setTooltip ("Borrar el bucle");
+        clearButton.onClick = [this] { editor.processor.looperClear(); updateLooper(); editor.blockStateChanged(); };
+        addAndMakeVisible (stopButton);
+        addAndMakeVisible (clearButton);
+        lastOn = true;
+        refresh();
+        updateLooper();
+        return;
+    }
 
     setMouseCursor (juce::MouseCursor::DraggingHandCursor);   // the enclosure can be grabbed; children keep their own cursors
 
@@ -479,8 +499,36 @@ EffectSuiteEditor::Stompbox::Stompbox (EffectSuiteEditor& e, const PedalDef& def
     };
 }
 
+bool EffectSuiteEditor::Stompbox::updateLooper()
+{
+    if (! looper)
+        return false;
+
+    const int state = (int) editor.processor.getLooperState();
+    const double seconds = editor.processor.getLooperSeconds();
+    const float pos = editor.processor.getLooperPosition();
+    const bool running = state == (int) fx::Looper::State::recording || state == (int) fx::Looper::State::playing
+                      || state == (int) fx::Looper::State::overdubbing;
+    const bool stateChanged = state != shownLooperState;
+
+    if (stateChanged || std::abs (seconds - shownLooperSeconds) >= 0.05)
+        repaint (statusArea.getUnion (lengthArea).getUnion (ledArea));
+    if (stateChanged || (running && std::abs (pos - shownLooperPos) > 0.002f))
+        repaint (barArea.expanded (0, 2));
+
+    shownLooperState = state;
+    shownLooperSeconds = seconds;
+    shownLooperPos = pos;
+    stopButton.setEnabled (state != (int) fx::Looper::State::empty && state != (int) fx::Looper::State::stopped);
+    clearButton.setEnabled (state != (int) fx::Looper::State::empty);
+    return stateChanged;
+}
+
 void EffectSuiteEditor::Stompbox::mouseDown (const juce::MouseEvent& e)
 {
+    if (looper)
+        return;   // the looper stays last in the chain: it is not draggable
+
     // Only reached for the enclosure itself: knobs, combo, footswitch and the x button take their own clicks
     // Knob labels do not intercept the mouse, so exclude them here: only the enclosure and the name start a drag
     bool onLabel = false;
@@ -504,6 +552,9 @@ void EffectSuiteEditor::Stompbox::mouseDown (const juce::MouseEvent& e)
 
 juce::MouseCursor EffectSuiteEditor::Stompbox::getMouseCursor()
 {
+    if (looper)
+        return juce::MouseCursor::NormalCursor;
+
     const auto p = getMouseXYRelative();
     for (auto& k : knobs)
         if (k->label.getBounds().contains (p))
@@ -548,7 +599,7 @@ void EffectSuiteEditor::Stompbox::refresh()
     for (auto& k : knobs)
     {
         k->label.setColour (juce::Label::textColourId, ink);
-        k->slider.setColour (juce::Slider::rotarySliderFillColourId, ink);
+        k->slider.setColour (juce::Slider::rotarySliderFillColourId, looper ? juce::Colour (0xffe5484d) : ink);
         k->slider.setColour (juce::Slider::rotarySliderOutlineColourId, juce::Colours::black.withAlpha (0.35f));
     }
 
@@ -577,7 +628,48 @@ void EffectSuiteEditor::Stompbox::paint (juce::Graphics& g)
     g.setColour (ink.withAlpha (0.35f));
     g.fillRect (nameArea.toFloat().withHeight (1.0f).reduced (4.0f * scale, 0.0f));
 
-    drawLight (g, ledArea.toFloat().getCentre(), 5.0f * scale, ledRed, lastOn);
+    if (! looper)
+    {
+        drawLight (g, ledArea.toFloat().getCentre(), 5.0f * scale, ledRed, lastOn);
+        return;
+    }
+
+    using State = fx::Looper::State;
+    const auto st = (State) shownLooperState;
+    const bool hasLoop = st != State::empty;
+    const bool running = st == State::recording || st == State::playing || st == State::overdubbing;
+    const juce::Colour stateColour = st == State::recording ? ledRed
+                                   : st == State::playing ? okColour
+                                   : st == State::overdubbing ? accentColour : dimTextColour;
+
+    // Red accent along the top edge
+    g.setColour (ledRed.withAlpha (0.9f));
+    g.fillRoundedRectangle (r.getX() + 8.0f * scale, r.getY() + 2.0f * scale, r.getWidth() - 16.0f * scale,
+                            juce::jmax (2.0f, 3.0f * scale), 1.5f);
+
+    const char* texts[] = { "VAC\xc3\x8dO", "GRABANDO", "REPRODUCIENDO", "SOBREGRABANDO", "PARADO" };
+    g.setColour (stateColour);
+    g.setFont (juce::FontOptions (smallFont (11.5f, scale), juce::Font::bold));
+    g.drawFittedText (juce::CharPointer_UTF8 (texts[juce::jlimit (0, 4, shownLooperState)]), statusArea,
+                      juce::Justification::centred, 1, 0.55f);
+
+    // Progress bar
+    const auto bar = barArea.toFloat();
+    g.setColour (juce::Colours::black.withAlpha (0.5f));
+    g.fillRoundedRectangle (bar, bar.getHeight() * 0.5f);
+    if (running && hasLoop)
+    {
+        g.setColour (stateColour);
+        g.fillRoundedRectangle (bar.withWidth (juce::jmax (bar.getHeight(), bar.getWidth() * juce::jlimit (0.0f, 1.0f, shownLooperPos))),
+                                bar.getHeight() * 0.5f);
+    }
+
+    g.setColour (textColour.withAlpha (hasLoop ? 0.9f : 0.4f));
+    g.setFont (juce::FontOptions (smallFont (11.0f, scale)));
+    g.drawFittedText (hasLoop ? juce::String (shownLooperSeconds, 1) + " s" : juce::String (juce::CharPointer_UTF8 ("\xe2\x80\x94")),
+                      lengthArea, juce::Justification::centred, 1, 0.7f);
+
+    drawLight (g, ledArea.toFloat().getCentre(), 5.0f * scale, stateColour, running);
 }
 
 void EffectSuiteEditor::Stompbox::paintOverChildren (juce::Graphics& g)
@@ -607,6 +699,31 @@ void EffectSuiteEditor::Stompbox::resized()
     r.removeFromBottom (juce::roundToInt (4 * s));
     controlsArea = r;
 
+    if (looper)
+    {
+        const int lh = juce::roundToInt (smallFont (11.5f, s) + 2.0f);
+        statusArea = r.removeFromTop (lh);
+        r.removeFromTop (juce::roundToInt (2 * s));
+        barArea = r.removeFromTop (juce::jmax (3, juce::roundToInt (6 * s))).reduced (juce::roundToInt (4 * s), 0);
+        r.removeFromTop (juce::roundToInt (1 * s));
+        lengthArea = r.removeFromTop (lh);
+        r.removeFromTop (juce::roundToInt (3 * s));
+
+        // Level knob on the left, the two small buttons stacked on the right
+        auto knobCell = r.removeFromLeft (r.getWidth() / 2);
+        const int labelH = juce::roundToInt (smallFont (11.5f, s) + 3.0f);
+        const bool showLabel = knobCell.getHeight() >= labelH + 22;
+        knobs[0]->label.setVisible (showLabel);
+        placeKnob (*knobs[0], knobCell, showLabel ? labelH : 0, smallFont (11.5f, s), juce::roundToInt (60 * s));
+
+        const int bh = juce::jmin (juce::roundToInt (26 * s), (r.getHeight() - 2) / 2);
+        auto col = r.withSizeKeepingCentre (r.getWidth(), bh * 2 + 2).reduced (juce::roundToInt (2 * s), 0);
+        stopButton.setBounds (col.removeFromTop (bh));
+        col.removeFromTop (2);
+        clearButton.setBounds (col.removeFromTop (bh));
+        return;
+    }
+
     if (hasCombo)
     {
         combo.setBounds (r.removeFromTop (juce::roundToInt (24 * s)));
@@ -620,8 +737,11 @@ void EffectSuiteEditor::Stompbox::resized()
     if (sliders)
     {
         const int w = r.getWidth() / n;
+        int sliderIndex = 0;
         for (auto& k : knobs)
         {
+            // Too narrow for every caption: show every other one
+            k->label.setVisible (w >= 26 || (sliderIndex++ % 2) == 0);
             auto cell = r.removeFromLeft (w);
             k->label.setBounds (cell.removeFromBottom (labelH));
             k->label.setText (knobCaption (k->fullText, w), juce::dontSendNotification);
@@ -1009,9 +1129,10 @@ void EffectSuiteEditor::CabUnit::resized()
 }
 
 //==============================================================================
-void EffectSuiteEditor::FlowStrip::addChip (const juce::String& text, juce::Colour colour, juce::Button& target)
+void EffectSuiteEditor::FlowStrip::addChip (const juce::String& text, juce::Colour colour, juce::Button& target,
+                                            std::function<bool()> lit)
 {
-    chips.push_back ({ text, colour, &target, {} });
+    chips.push_back ({ text, colour, &target, std::move (lit), {} });
 }
 
 void EffectSuiteEditor::FlowStrip::resized()
@@ -1068,7 +1189,7 @@ void EffectSuiteEditor::FlowStrip::paint (juce::Graphics& g)
 
     for (auto& chip : chips)
     {
-        const bool on = chip.target->getToggleState();
+        const bool on = chip.lit ? chip.lit() : chip.target->getToggleState();
         const float corner = chip.bounds.getHeight() * 0.3f;
 
         const auto fill = on ? chip.colour : mutedChipColour (chip.colour);
@@ -1130,6 +1251,7 @@ EffectSuiteEditor::EffectSuiteEditor (EffectSuiteProcessor& p)
         { "TREMOLO",     "TREM",  0xff7d9440, "tremOn",    nullptr, { { "Rate", "tremRate" }, { "Depth", "tremDepth" } } },
         { "DELAY",       "DELAY", 0xff1f9d93, "delayOn",   "delayModel", { { "Time", "delayTime", ms }, { "Feedback", "delayFeedback" }, { "Mix", "delayMix" } } },
         { "REVERB",      "REVERB", 0xff7fc4ea, "reverbOn", "reverbModel", { { "Size", "reverbSize" }, { "Mix", "reverbMix" } } },
+        { "LOOPER",      "LOOP",  0xff4a4d55, "looperOn",  nullptr, { { "Level", "looperLevel" } }, false, true },
     };
 
     flow = std::make_unique<FlowStrip>();
@@ -1377,9 +1499,19 @@ void EffectSuiteEditor::refreshBoard()
     flow->clearChips();
     auto addChips = [this] (bool afterAmp)
     {
-        for (auto& id : processor.getBoardRow (afterAmp))
+        for (auto& id : boardRow (afterAmp))
             if (auto* p = findPedal (id))
-                flow->addChip (p->getChipText(), p->getColour(), p->getSwitch());
+            {
+                if (p->isLooper())
+                    flow->addChip (p->getChipText(), p->getColour(), p->getSwitch(), [this]
+                    {
+                        const auto st = processor.getLooperState();
+                        return st == fx::Looper::State::recording || st == fx::Looper::State::playing
+                            || st == fx::Looper::State::overdubbing;
+                    });
+                else
+                    flow->addChip (p->getChipText(), p->getColour(), p->getSwitch());
+            }
     };
     addChips (false);
     flow->addChip ("AMP", accentColour, amp->getSwitch());
@@ -1392,6 +1524,17 @@ void EffectSuiteEditor::refreshBoard()
         flow->resized();
     }
     repaint();
+}
+
+juce::StringArray EffectSuiteEditor::boardRow (bool post) const
+{
+    auto row = processor.getBoardRow (post);
+    if (const int i = row.indexOf ("looper"); i >= 0 && i != row.size() - 1)
+    {
+        row.remove (i);
+        row.add ("looper");
+    }
+    return row;
 }
 
 EffectSuiteEditor::Stompbox* EffectSuiteEditor::findPedal (const juce::String& id) const
@@ -1427,7 +1570,7 @@ void EffectSuiteEditor::layoutPedalRow (bool post, bool animate)
     // Signal order from the processor, not the fixed order of the pedal list
     std::vector<Stompbox*> shown, others;
     int hole = -1;
-    for (auto& id : processor.getBoardRow (post))
+    for (auto& id : boardRow (post))
         if (auto* p = findPedal (id))
         {
             if (p == draggedPedal)
@@ -1511,7 +1654,9 @@ void EffectSuiteEditor::updatePedalDrag (Stompbox& pedal, juce::Point<int> edito
 
     if (board.contains (editorPos))
     {
-        const int count = processor.getBoardRow (post).size();
+        int count = boardRow (post).size();
+        if (boardRow (post).contains ("looper"))
+            --count;   // nothing is dropped after the looper
         const float step = rowStep[post ? 1 : 0];
 
         if (count > 0 && step > 0.0f)
@@ -1795,6 +1940,10 @@ void EffectSuiteEditor::timerCallback()
     }
 
     updateRecordingUi (false);
+
+    if (auto* looperPedal = findPedal ("looper"); looperPedal != nullptr && looperPedal->isVisible())
+        if (looperPedal->updateLooper() && flow != nullptr)
+            flow->repaint();
 
     if ((timerTick % 10) == 0)
     {

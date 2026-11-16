@@ -122,6 +122,10 @@ private:
         void mouseDrag (const juce::MouseEvent&) override;
         void mouseUp (const juce::MouseEvent&) override;
 
+        /** Looper mode: polls the processor and repaints what changed. Returns true when the state changed. */
+        bool updateLooper();
+        bool isLooper() const noexcept { return looper; }
+
         const juce::String& getId() const noexcept       { return id; }
         const juce::String& getChipText() const noexcept { return chipText; }
         const juce::String& getName() const noexcept     { return name; }
@@ -138,6 +142,14 @@ private:
         juce::Colour colour;
         bool sliders = false, hasCombo = false, lastOn = false;
         bool dragArmed = false, dragging = false;
+
+        // Looper mode (no on/off parameter: the footswitch presses the looper's main switch)
+        bool looper = false;
+        int shownLooperState = -1;
+        double shownLooperSeconds = -1.0;
+        float shownLooperPos = -1.0f;
+        juce::TextButton stopButton { "Parar" }, clearButton { "Borrar" };
+        juce::Rectangle<int> statusArea, barArea, lengthArea;
 
         std::vector<std::unique_ptr<Knob>> knobs;
         juce::ComboBox combo;
@@ -216,7 +228,7 @@ private:
     {
     public:
         void clearChips() { chips.clear(); }
-        void addChip (const juce::String& text, juce::Colour, juce::Button& target);
+        void addChip (const juce::String& text, juce::Colour, juce::Button& target, std::function<bool()> lit = {});
         void paint (juce::Graphics&) override;
         void resized() override;
         void mouseDown (const juce::MouseEvent&) override;
@@ -230,6 +242,7 @@ private:
             juce::String text;
             juce::Colour colour;
             juce::Button* target = nullptr;
+            std::function<bool()> lit;      // overrides the target's toggle state when set
             juce::Rectangle<float> bounds;
         };
         int chipAt (juce::Point<float>) const;
@@ -251,6 +264,7 @@ private:
     void layoutPedalRow (bool post, bool animate);
     void storeEditorWidth();
     void toggleRecording();
+    juce::StringArray boardRow (bool post) const;   // signal order, looper always last
     void updateRecordingUi (bool force);
 
     // Pedal drag and drop (driven by the Stompbox mouse handlers)

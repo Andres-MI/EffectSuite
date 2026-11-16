@@ -167,6 +167,14 @@ void testBoard()
     check (plugin.getBoardRow (true) == juce::StringArray ({ "chorus", "eq", "delay", "reverb" }) && plugin.getBoardRow (false).size() == 3,
            "mover en una fila no altera la otra");
 
+    // El looper se queda siempre el último de su fila
+    plugin.setOnBoard ("looper", true);
+    plugin.setOnBoard ("flanger", true);
+    plugin.movePedal ("eq", 99);
+    plugin.movePedal ("looper", 0);
+    check (plugin.getBoardRow (true).size() == 6 && plugin.getBoardRow (true)[5] == "looper" && plugin.getBoardRow (true)[4] == "eq",
+           "el looper queda siempre al final de su fila");
+
     // Un pedal encendido desde fuera (automatización) aparece en la pedalera
     EffectSuiteProcessor automated;
     const int revision = automated.getBoardRevision();
