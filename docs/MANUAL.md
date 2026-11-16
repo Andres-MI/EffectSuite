@@ -31,7 +31,7 @@ EffectSuite reproduce en tiempo real una cadena de señal completa:
 pedales de antes del ampli -> amplificador -> pantalla -> pedales de después del ampli
 ```
 
-Incluye 14 pedales, 9 amplificadores (6 de guitarra y 3 de bajo), 5 pantallas, carga de respuestas a impulso propias, carga de capturas neuronales `.nam`, un afinador y 15 presets de fábrica.
+Incluye 15 pedales (entre ellos un looper), 16 amplificadores (11 de guitarra y 5 de bajo), 5 pantallas, carga de respuestas a impulso propias, carga de capturas neuronales `.nam`, un afinador, un grabador de tomas con metrónomo y 26 presets de fábrica.
 
 ### Qué necesitas
 
@@ -181,7 +181,7 @@ El equipo está dividido en tres filas, cada una con su título:
 
 1. **ANTES DEL AMPLI**: los pedales que van entre tu guitarra y el ampli. Pueden estar aquí: Puerta, Wah, Compresor, Octavador, Phaser, Overdrive, Distorsión y Fuzz.
 2. **AMPLI**: a la izquierda el **AMPLIFICADOR** (cabezal) y a la derecha la **PANTALLA**.
-3. **DESPUÉS DEL AMPLI**: los pedales que van tras el ampli y la pantalla. Pueden estar aquí: Ecualizador, Flanger, Chorus, Tremolo, Delay y Reverb.
+3. **DESPUÉS DEL AMPLI**: los pedales que van tras el ampli y la pantalla. Pueden estar aquí: Ecualizador, Flanger, Chorus, Tremolo, Delay, Reverb y Looper.
 
 Cada tipo de pedal existe **una sola vez**: no puedes tener dos overdrives, por ejemplo.
 
@@ -191,7 +191,7 @@ Cada pedal tiene una carcasa de color, sus mandos con el nombre encima, el nombr
 
 - **Encender y apagar**: pulsa el interruptor de pie. El LED se ilumina en rojo cuando el pedal está activo. El cambio se hace con un fundido corto, sin chasquido.
 - **Mover un mando**: arrástralo con el ratón.
-- **Elegir modelo**: los pedales con modelos (Wah, Overdrive, Distorsión y Fuzz) tienen un desplegable en la parte superior.
+- **Elegir modelo**: los pedales con modelos (Wah, Overdrive, Distorsión, Fuzz, Delay y Reverb) tienen un desplegable en la parte superior.
 - **Quitar un pedal de la pedalera**: pulsa la pequeña **x** de la esquina superior derecha del pedal, o haz clic derecho sobre la carcasa y elige **Quitar de la pedalera**. Al quitarlo, el pedal se apaga.
 - **Añadir un pedal**: pulsa el recuadro de líneas discontinuas **Añadir pedal** al final de la fila. Se abre un menú con los pedales de esa fila que no están en la pedalera. Al elegir uno, se añade al final de la fila y **se enciende**.
 - **Reordenar**: agarra el pedal por la carcasa (no por un mando ni por el interruptor) y arrástralo a otra posición **dentro de su misma fila**. Una marca indica dónde caerá. El orden en la fila es el orden real de la señal, y la tira de señal lo refleja. Un pedal no puede pasar de la fila de antes del ampli a la de después, ni al revés.
@@ -274,7 +274,7 @@ Los presets de fábrica no llevan IR ni captura.
 
 ### 5.6 Presets de fábrica
 
-Hay 15: 10 de guitarra y 5 de bajo. Las descripciones se derivan de sus ajustes. Los pedales que se indican son los que el preset deja encendidos.
+Hay 26: 18 de guitarra y 8 de bajo. Las descripciones se derivan de sus ajustes. Los pedales que se indican son los que el preset deja encendidos.
 
 | Preset | Qué lleva |
 |---|---|
@@ -293,6 +293,17 @@ Hay 15: 10 de guitarra y 5 de bajo. Las descripciones se derivan de sus ajustes.
 | Bajo: Rock | Ampli Bass Rock con Bass 8x10, compresor y overdrive Bass Drive. |
 | Bajo: Fuzz | Ampli Bass Tube con Bass 8x10 y el fuzz Bass Fuzz. |
 | Bajo: Sub octava | Ampli Bass Clean con Bass 8x10, compresor, octavador (octava inferior) y chorus suave. |
+| Guitarra: Plexi clásico | Ampli Plexi con Guitar 4x12, overdrive Treble Boost con ganancia media y delay en modo Cinta de 320 ms con poca mezcla. |
+| Guitarra: Surf con muelles | Ampli Clean American con Guitar 2x12 Open y los agudos subidos, reverb de Muelles bastante presente y tremolo. |
+| Guitarra: Limpio jazz | Ampli Jazz Clean con Guitar 2x12 Open, compresor suave y chorus con mezcla alta. |
+| Guitarra: Muro de fuzz | Ampli Brit Clean 100 con Guitar 4x12, fuzz Big Fuzz con el tono algo bajo y poco volumen, y un toque de reverb. |
+| Guitarra: Stoner | Ampli Thick Crunch con los graves subidos y Guitar 4x12, puerta y fuzz Big Fuzz con ganancia media. |
+| Guitarra: Metal sueco | Ampli British Crunch con poca ganancia y Guitar 4x12, puerta con umbral alto (-52 dB) y distorsión Swedish con ganancia y tono altos. |
+| Guitarra: Rectificado | Ampli Rectified con los medios bajados y Guitar 4x12, puerta (-55 dB) y overdrive Asym Drive con poca ganancia como refuerzo previo. |
+| Guitarra: Distorsión naranja | Ampli Clean American con poca ganancia, distorsión Orange y ecualizador que sube 400 Hz y baja 3,2 kHz. |
+| Bajo: Estudio | Ampli Bass Studio con Bass 1x15 y un compresor. |
+| Bajo: Directo con gruñido | Ampli Bass DI con la presencia subida, Bass 8x10 y compresor. |
+| Bajo: Moderno agresivo | Ampli Bass Clean con Bass 8x10, compresor, distorsión Bass Modern y ecualizador que sube 100 Hz y baja 400 Hz. |
 
 ---
 
@@ -363,11 +374,11 @@ Consejo: velocidades bajas dan un efecto envolvente; con **Feedback** alto el ef
 
 #### Overdrive
 
-Saturación suave a base de diodos. Tiene cuatro modelos. Los nombres son genéricos y no corresponden a marcas concretas.
+Saturación suave a base de diodos. Tiene seis modelos. Los nombres son genéricos y no corresponden a marcas concretas.
 
 | Control | Qué hace |
 |---|---|
-| Selector de modelo | Elige uno de los cuatro modelos. |
+| Selector de modelo | Elige uno de los seis modelos. |
 | **Drive** | Cantidad de saturación. |
 | **Tone** | Brillo del sonido saturado. |
 | **Level** | Volumen de salida. |
@@ -378,16 +389,18 @@ Saturación suave a base de diodos. Tiene cuatro modelos. Los nombres son genér
 | **Blues** | Saturación asimétrica y más graves entrando al circuito. Algo más bajo de volumen. |
 | **Transparent** | Mezcla señal limpia con la saturada, por lo que conserva más la dinámica y el carácter de tu guitarra. |
 | **Bass Drive** | **Pensado para bajo.** Mantiene limpios los graves (por debajo de unos 150 Hz) y satura solo el resto. |
+| **Asym Drive** | Parte del mismo circuito que Mid Boost, pero con el recorte asimétrico (distinto número de diodos en cada sentido), como Blues. Su volumen de salida es algo menor. |
+| **Treble Boost** | No usa el circuito de diodos: es un realce de agudos de un transistor. Recorta mucho los graves de entrada y tiene el tono más agudo de todos; su volumen de salida es el más bajo. |
 
-Consejo: úsalo con **Level** alto y **Drive** bajo delante del ampli para empujarlo; o con **Drive** alto como saturación propia.
+Consejo: úsalo con **Level** alto y **Drive** bajo delante del ampli para empujarlo; o con **Drive** alto como saturación propia. **Treble Boost** funciona mejor delante de un ampli ya algo saturado, al que da más agudos; si suena fino, prueba Mid Boost. En un ampli de mucha ganancia, **Asym Drive** con **Drive** bajo sirve como refuerzo previo.
 
 #### Distorsión
 
-Recorte duro: mucha ganancia seguida de diodos. Cuatro modelos.
+Recorte duro: mucha ganancia seguida de diodos. Siete modelos.
 
 | Control | Qué hace |
 |---|---|
-| Selector de modelo | Elige uno de los cuatro modelos. |
+| Selector de modelo | Elige uno de los siete modelos. |
 | **Gain** | Cantidad de distorsión. |
 | **Tone** | Brillo. |
 | **Level** | Volumen de salida. |
@@ -395,11 +408,14 @@ Recorte duro: mucha ganancia seguida de diodos. Cuatro modelos.
 | Modelo | Carácter, según cómo está construido |
 |---|---|
 | **Classic** | Distorsión de uso general. Es el modelo por defecto. |
-| **Rodent** | Tiene la mayor ganancia posible de los cuatro y un tono de partida más oscuro. |
+| **Rodent** | Tiene la mayor ganancia posible de los siete y un tono de partida más oscuro. |
 | **Metal** | Muy alta ganancia, con los medios vaciados (una bajada alrededor de 700 Hz) y más volumen de salida. |
 | **Bass Distortion** | **Pensado para bajo.** Mantiene limpios los graves (por debajo de unos 120 Hz) y distorsiona el resto. |
+| **Orange** | Mucha ganancia, aunque menos que Rodent o Metal, y el volumen de salida más alto de la lista. Su **Tone** es distinto: mezcla graves y agudos con un valle en los medios, en vez de un simple filtro. |
+| **Swedish** | Mucha ganancia, con un realce fijo de graves (alrededor de 100 Hz) y un realce fuerte de medios agudos (alrededor de 1,1 kHz). Aquí **Tone** gradúa ese realce de medios en lugar de oscurecer o aclarar el sonido. |
+| **Bass Modern** | **Pensado para bajo.** Mezcla casi toda la señal limpia con la distorsionada, así que el bajo conserva su cuerpo y la distorsión se suma encima, con un realce fijo de medios agudos (2,8 kHz). Su volumen de salida es bajo. |
 
-Consejo: con distorsiones fuertes pon delante la Puerta y, si te sobran recursos, sube **Calidad** para reducir el aliasing (ver [sección 11](#11-rendimiento-y-latencia)).
+Consejo: Orange y Swedish suenan fuertes, así que empieza con **Level** bajo. Con distorsiones fuertes pon delante la Puerta y, si te sobran recursos, sube **Calidad** para reducir el aliasing (ver [sección 11](#11-rendimiento-y-latencia)).
 
 #### Fuzz
 
@@ -407,7 +423,7 @@ Dos etapas de saturación muy asimétrica, de recorte casi cuadrado. Es un **mod
 
 | Control | Qué hace |
 |---|---|
-| Selector de modelo | Elige uno de los tres modelos. |
+| Selector de modelo | Elige uno de los cuatro modelos. |
 | **Fuzz** | Cantidad de fuzz. |
 | **Tone** | Brillo. |
 | **Level** | Volumen de salida. |
@@ -417,21 +433,25 @@ Dos etapas de saturación muy asimétrica, de recorte casi cuadrado. Es un **mod
 | **Vintage** | Fuzz de dos etapas, el básico. Es el modelo por defecto. |
 | **Octave** | Rectifica la señal antes de saturarla, lo que añade una octava por encima. |
 | **Bass Fuzz** | **Pensado para bajo.** Mantiene limpios los graves (por debajo de unos 120 Hz) y deja entrar el fuzz en el resto. |
+| **Big Fuzz** | Más ganancia entre las dos etapas y recorte casi simétrico (los otros modelos son claramente asimétricos), con mucho más volumen de salida. Su **Tone** mezcla graves y agudos con un valle en los medios. |
 
-Consejo: el fuzz responde al volumen de la guitarra y a lo que haya antes; ponlo el primero en la cadena (antes de compresor o wah) y prueba a bajar el volumen de la guitarra para limpiar el sonido.
+Consejo: el fuzz responde al volumen de la guitarra y a lo que haya antes; ponlo el primero en la cadena (antes de compresor o wah) y prueba a bajar el volumen de la guitarra para limpiar el sonido. **Big Fuzz** sale muy fuerte: baja **Level** antes de encenderlo.
 
 ### 6.2 Después del ampli
 
 #### Ecualizador
 
-Cuatro bandas de ±12 dB, con deslizadores verticales.
+Ecualizador gráfico de siete bandas, de una octava cada una, con deslizadores verticales. Cada banda sube o baja hasta ±12 dB.
 
 | Control | Qué hace |
 |---|---|
 | **100** | Graves (100 Hz). |
+| **200** | Graves altos (200 Hz). |
 | **400** | Medios graves (400 Hz). |
+| **800** | Medios (800 Hz). |
 | **1.6k** | Medios agudos (1,6 kHz). |
-| **5k** | Agudos (5 kHz). |
+| **3.2k** | Presencia (3,2 kHz). |
+| **6.4k** | Agudos (6,4 kHz). |
 
 Consejo: se aplica tras la pantalla, así que sirve para ajustar el sonido final (por ejemplo, recortar medios graves en un bajo).
 
@@ -468,7 +488,12 @@ Modulación del volumen.
 
 #### Delay
 
-Retardo de hasta 1,5 s con realimentación. Las repeticiones se oscurecen poco a poco.
+Retardo de hasta 1,5 s con realimentación. Tiene dos modelos, que eliges en el desplegable de la parte superior del pedal.
+
+| Modelo | Carácter |
+|---|---|
+| **Analógico** | Las repeticiones se van oscureciendo poco a poco, como en un delay analógico. Es el modelo por defecto. |
+| **Cinta** | Eco de cinta: el tiempo fluctúa un poco (una oscilación lenta y otra más rápida), y cada repetición sale más oscura, con menos graves y algo saturada. |
 
 | Control | Qué hace |
 |---|---|
@@ -476,30 +501,65 @@ Retardo de hasta 1,5 s con realimentación. Las repeticiones se oscurecen poco a
 | **Feedback** | Cuántas repeticiones se oyen. |
 | **Mix** | Volumen del retardo respecto a la señal directa. |
 
-Consejo: para un eco discreto, **Feedback** bajo y **Mix** bajo; para un ambiente largo, **Time** alto y **Feedback** medio.
+Consejo: para un eco discreto, **Feedback** bajo y **Mix** bajo; para un ambiente largo, **Time** alto y **Feedback** medio. Con **Cinta** y mucho **Feedback**, las repeticiones se van degradando más que en Analógico.
 
 #### Reverb
 
-Reverb estéreo.
+Reverb estéreo con dos modelos, que eliges en el desplegable de la parte superior del pedal.
+
+| Modelo | Carácter |
+|---|---|
+| **Sala** | Reverb de sala. Es el modelo por defecto. |
+| **Muelles** | Reverb de muelles, como la de los amplis clásicos: tres muelles de distinta longitud repartidos en estéreo, cuya señal pasa por filtros que retrasan más unas frecuencias que otras, lo que da su "chapoteo" característico. Solo deja pasar la banda media de la señal (aproximadamente de 160 Hz a 5,5 kHz). |
 
 | Control | Qué hace |
 |---|---|
-| **Size** | Tamaño de la sala. |
+| **Size** | En Sala, el tamaño de la sala. En Muelles, cuánto tarda en apagarse la reverb. |
 | **Mix** | Cantidad de reverb. |
 
 Consejo: ponla la última de la cadena y con **Mix** bajo; la reverb come definición.
+
+#### Looper
+
+Graba una frase, la repite en bucle y te deja grabar capas encima. Es el último pedal de la fila de después del ampli.
+
+| Control | Qué hace |
+|---|---|
+| Interruptor de pie | Recorre el ciclo de un solo pulsador, ver abajo. |
+| **Parar** | Detiene el bucle. |
+| **Borrar** | Vacía el bucle para empezar de nuevo. |
+| **Level** | Volumen con el que suena el bucle (no cambia lo que se graba). |
+
+El interruptor de pie hace siempre lo mismo en este orden:
+
+1. **Vacío**: pulsa para empezar a **grabar** la frase.
+2. **Grabando**: toca. Pulsa otra vez para cerrar la frase; el bucle empieza a **reproducirse** de inmediato.
+3. **Reproduciendo**: pulsa para **sobregrabar**: lo que toques se suma al bucle.
+4. **Sobregrabando**: pulsa para volver a **reproducir**. De ahí puedes repetir el paso 3 para añadir más capas.
+
+Detalles:
+
+- Con **Parar** el bucle se detiene; al pulsar el interruptor de pie vuelve a sonar desde el principio. **Borrar** lo vacía del todo.
+- El bucle puede durar hasta **60 segundos**. Si llegas a ese límite mientras grabas, el bucle se cierra solo y empieza a sonar.
+- Una frase demasiado corta (de unos milisegundos) se descarta.
+- Con el pedal apagado, el bucle no se oye.
+- El looper va **siempre al final de la cadena**, sea cual sea el orden en que tengas los demás pedales: graba y repite el sonido ya terminado, con el delay y la reverb incluidos.
+- **El bucle no se guarda** con los presets ni con el proyecto del DAW. Al cerrar el programa o cargar otro estado se pierde.
+- Lo que reproduce el looper entra en la salida, así que **queda incluido en las tomas grabadas** (ver [sección 10](#10-grabar-tomas-y-metrónomo)).
+
+Consejo: empieza con un compás o dos que marques con el metrónomo; es más fácil que el bucle quede ajustado.
 
 ### 6.3 Resumen: modelos pensados para bajo
 
 | Pedal o bloque | Modelos para bajo |
 |---|---|
 | Overdrive | Bass Drive |
-| Distorsión | Bass Distortion |
+| Distorsión | Bass Distortion, Bass Modern |
 | Fuzz | Bass Fuzz |
-| Amplificador | Bass Tube, Bass Clean, Bass Rock |
+| Amplificador | Bass Tube, Bass Clean, Bass Rock, Bass Studio, Bass DI |
 | Pantalla | Bass 8x10, Bass 1x15 |
 
-Los tres pedales "Bass" conservan los graves limpios y saturan solo el resto, para que el bajo no pierda cuerpo.
+Los modelos "Bass" de overdrive, distorsión y fuzz conservan los graves limpios y saturan el resto, para que el bajo no pierda cuerpo.
 
 ---
 
@@ -507,19 +567,26 @@ Los tres pedales "Bass" conservan los graves limpios y saturan solo el resto, pa
 
 ### 7.1 El amplificador
 
-El ampli es un modelo con varias etapas de válvula, un control de tonos calculado desde un circuito y una etapa de potencia que "se hunde" un poco cuando le pides mucho (sag). El desplegable **Modelo** elige entre nueve. Los nombres son genéricos y no corresponden a marcas.
+El ampli es un modelo con varias etapas de válvula, un control de tonos calculado desde un circuito y una etapa de potencia que "se hunde" un poco cuando le pides mucho (sag). El desplegable **Modelo** elige entre dieciséis. Los nombres son genéricos y no corresponden a marcas.
 
 | Modelo | Para | Carácter, según sus ajustes internos |
 |---|---|---|
 | **Clean American** | Guitarra | Dos etapas con poca ganancia, mucho margen limpio y control de tonos de tipo americano. Es el modelo por defecto. |
-| **British Crunch** | Guitarra | Tres etapas, ganancia media-alta y control de tonos de tipo británico. Pasa de limpio a crunch al subir **Gain**. |
+| **British Crunch** | Guitarra | Tres etapas, ganancia media-alta y control de tonos de tipo británico. Pasa de limpio a crunch al subir **Gain**. Es el británico de más ganancia; el Plexi es el más suelto. |
 | **High Gain** | Guitarra | Cuatro etapas y mucha ganancia, con control de tonos de tipo moderno. |
 | **Tweed** | Guitarra | Tres etapas, mucho sag: se comprime y se ensucia con facilidad. Bueno para blues y rock suave. |
 | **Class A Chime** | Guitarra | Dos etapas con respuesta en agudos más abierta y mucho sag. Sonido brillante. |
-| **Modern Lead** | Guitarra | Cuatro etapas, la mayor ganancia de la lista, con la parte alta más recortada para solos. |
+| **Modern Lead** | Guitarra | Cuatro etapas y ganancia muy alta, con la parte alta más recortada para solos. |
 | **Bass Tube** | Bajo | Tres etapas de válvula con respuesta extendida en graves. |
 | **Bass Clean** | Bajo | Dos etapas, sin sag: es el más limpio. |
 | **Bass Rock** | Bajo | Tres etapas con más ganancia, para un bajo rugoso. |
+| **Plexi** | Guitarra | Ampli británico anterior y más suelto que el British Crunch: tres etapas con bastante menos ganancia y la etapa de potencia trabajando más, con sag moderado. Mismo tipo de control de tonos británico. |
+| **Thick Crunch** | Guitarra | Crunch grueso: tres etapas, con muchos graves y medios y los agudos suaves. Control de tonos propio. |
+| **Jazz Clean** | Guitarra | Limpio de transistores: dos etapas con casi nada de saturación, sin sag y con los agudos muy abiertos, y con mucha pegada. Control de tonos de tipo americano. |
+| **Rectified** | Guitarra | Alta ganancia rectificada: cuatro etapas, graves enormes, medios vaciados y mucho sag (de los más altos de la lista). |
+| **Brit Clean 100** | Guitarra | Limpio británico de 100 W: muy rígido y con mucho margen antes de empezar a romper. Control de tonos neutro. |
+| **Bass Studio** | Bajo | Ampli de bajo de estudio: dos etapas, cálido y redondo, con compresión suave y los agudos recortados. |
+| **Bass DI** | Bajo | Previo de bajo con saturación y caja directa: tres etapas, con gruñido en los medios agudos y graves firmes. |
 
 ### 7.2 Controles del ampli
 
@@ -674,7 +741,7 @@ El metrónomo se oye por la salida pero no queda grabado en ninguno de los dos a
 
 ### 10.3 Qué no hace
 
-No es un multipista: no reproduce tomas anteriores mientras grabas una nueva ni mezcla varias pistas. Para eso hace falta un DAW (Reaper es económico y ligero), donde EffectSuite se usa como plugin y los archivos grabados aquí se pueden importar.
+No es un multipista: no reproduce tomas anteriores mientras grabas una nueva ni mezcla varias pistas. Si quieres tocar sobre una base, el pedal Looper (ver [sección 6](#looper)) puede repetir una frase, y lo que reproduce queda incluido en la toma. Para eso hace falta un DAW (Reaper es económico y ligero), donde EffectSuite se usa como plugin y los archivos grabados aquí se pueden importar.
 
 ---
 
@@ -737,7 +804,7 @@ EffectSuite responde a dos tipos de mensajes MIDI.
 | **Control Change 11** (expresión) o **Control Change 4** (pedal de pie) | Mueve la posición del wah (**Position**). Usa el wah en modo **Manual**. |
 | **Program Change** | Carga un preset por número. El 0 es el primer preset de fábrica y sigue por la lista de fábrica en orden; después vienen tus presets, por orden alfabético. |
 
-Con los 15 presets de fábrica, los números **0 a 14** cargan los de fábrica y el **15** y siguientes cargan tus presets de usuario.
+Con los 26 presets de fábrica, los números **0 a 25** cargan los de fábrica y el **26** y siguientes cargan tus presets de usuario.
 
 ### Conectar un pedal o controlador MIDI
 
@@ -831,11 +898,12 @@ Comprueba que el wah está **encendido**, en modo **Manual**, y que tu dispositi
 ## 15. Limitaciones conocidas
 
 - **El octavador es monofónico.** Solo funciona bien con notas sueltas. Con acordes o varias cuerdas a la vez, el resultado no es fiable.
-- **Los pedales no pueden cruzar al otro lado del ampli.** Los ocho de antes (Puerta, Wah, Compresor, Octavador, Phaser, Overdrive, Distorsión, Fuzz) siempre van antes del ampli, y los seis de después (Ecualizador, Flanger, Chorus, Tremolo, Delay, Reverb) siempre después. Solo puedes reordenarlos dentro de su fila. Por la misma razón, no hay lazo de efectos con el ampli ni se puede poner, por ejemplo, un chorus antes del ampli.
+- **Los pedales no pueden cruzar al otro lado del ampli.** Los ocho de antes (Puerta, Wah, Compresor, Octavador, Phaser, Overdrive, Distorsión, Fuzz) siempre van antes del ampli, y los siete de después (Ecualizador, Flanger, Chorus, Tremolo, Delay, Reverb, Looper) siempre después. Solo puedes reordenarlos dentro de su fila. Por la misma razón, no hay lazo de efectos con el ampli ni se puede poner, por ejemplo, un chorus antes del ampli.
 - **Cada tipo de pedal solo existe una vez** en la pedalera.
 - **El fuzz es un modelo de comportamiento**, no una simulación de un circuito concreto, a diferencia del overdrive y la distorsión.
 - **Los instaladores no están firmados**, por eso Windows y macOS muestran avisos la primera vez.
 - **Los nombres de los modelos son genéricos** (por ejemplo, "Clean American", "British Crunch", "Rodent") y no corresponden a marcas ni a equipos concretos. Descríbelos por lo que hacen, no por lo que recuerdan.
+- **El bucle del looper no se guarda** con los presets ni con el proyecto, y su duración máxima es de 60 segundos.
 - Con una captura neuronal el control de tonos del ampli no interviene.
 - Los presets guardan la ruta de las IR y capturas, no los archivos.
 
