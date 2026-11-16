@@ -91,7 +91,7 @@ void testState()
 {
     std::printf ("\n1. Guardar y recuperar el estado\n");
     EffectSuiteProcessor a;
-    set (a, "ampModel", 4); set (a, "ampGain", 0.73f); set (a, "delayTime", 612.0f); set (a, "eqHigh", -7.5f);
+    set (a, "ampModel", 4); set (a, "ampGain", 0.73f); set (a, "delayTime", 612.0f); set (a, "eq6k4", -7.5f);
     a.setOnBoard ("fuzz", true); set (a, "fuzzOn", 1); set (a, "fuzzModel", 2);
     a.setOnBoard ("phaser", true);
     a.movePedal ("fuzz", 0);

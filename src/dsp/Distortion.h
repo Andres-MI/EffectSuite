@@ -14,6 +14,11 @@ struct DistortionVoicing
     double lowBlend;        // graves limpios (< 120 Hz) añadidos a la salida, para bajo
     double toneMinHz, toneRange;
     double outputGain;
+    bool tiltTone = false;      // control de tono que mezcla graves y agudos con un valle en medios
+    double peakLowHz = 0.0, peakLowDb = 0.0;        // realce fijo de graves a la salida
+    double peakHighHz = 0.0, peakHighDb = 0.0;      // realce de medios agudos; si tonePeak, el tono lo gradúa
+    bool tonePeak = false;
+    double cleanBlend = 0.0;    // señal limpia completa mezclada a la salida, para bajo
 };
 
 namespace distortions
@@ -23,8 +28,13 @@ namespace distortions
     inline constexpr DistortionVoicing metal   { "Metal",   1.0e3, 330e-9, 3e6,  -10.0, 0.0, 1500.0, 5.0, 1.3 };
     inline constexpr DistortionVoicing bass    { "Bass Distortion", 4.7e3, 330e-9, 3e6, 0.0, 1.2, 900.0, 6.0, 0.9 };
 
-    inline constexpr const DistortionVoicing* all[] { &classic, &rodent, &metal, &bass };
-    inline constexpr int count = 4;
+    inline constexpr DistortionVoicing orange  { "Orange",  1.5e3, 100e-9, 3e6, 0.0, 0.0, 1000.0, 8.0, 1.5, true };
+    inline constexpr DistortionVoicing swedish { "Swedish", 1.0e3, 150e-9, 3e6, 0.0, 0.0, 6500.0, 1.0, 0.75, false, 100.0, 9.0, 1100.0, 16.0, true };
+    inline constexpr DistortionVoicing bassModern { "Bass Modern", 1.5e3, 100e-9, 3e6, 0.0, 0.0, 1800.0, 4.0, 0.6, false, 0.0, 0.0, 2800.0, 4.0, false, 0.9 };
+
+    // El orden es el del parámetro guardado en los presets: añadir siempre al final.
+    inline constexpr const DistortionVoicing* all[] { &classic, &rodent, &metal, &bass, &orange, &swedish, &bassModern };
+    inline constexpr int count = 7;
 }
 
 /** Distorsión de recorte duro: operacional con mucha ganancia seguido de diodos a masa.
@@ -52,6 +62,7 @@ public:
     void reset() noexcept
     {
         inputHp.reset(); toneLp.reset(); opampLp.reset(); lowLp.reset(); scoop.reset();
+        tiltLow.reset(); tiltHigh.reset(); peakLow.reset(); peakHigh.reset();
         v = fPrev = 0.0;
         level.snap (level.target);
     }
@@ -106,18 +117,27 @@ public:
         fPrev = (u - vn) / R - Is * (e - 1.0 / e);
         v = vn;
 
-        double y = toneLp.lp (vn);
+        double y;
 
-        if (voicing->scoopDb != 0.0)
-            y = scoop.process (y);
+        if (voicing->tiltTone)
+            y = 1.7 * (1.0 - tiltMix) * tiltLow.lp (vn) + 1.3 * tiltMix * tiltHigh.hp (vn);     // graves frente a agudos, con valle en medios
+        else
+            y = toneLp.lp (vn);
 
-        return (y + voicing->lowBlend * lowLp.lp (x)) * level.next();
+        if (voicing->scoopDb != 0.0)   y = scoop.process (y);
+        if (voicing->peakLowDb != 0.0)  y = peakLow.process (y);
+        if (voicing->peakHighDb != 0.0) y = peakHigh.process (y);
+
+        return (y + voicing->lowBlend * lowLp.lp (x) + voicing->cleanBlend * x) * level.next();
     }
 
 private:
     void applyVoicing() noexcept
     {
         scoop.set (700.0, 0.8, voicing->scoopDb, fs);
+        tiltLow.setCutoff (234.0, fs);
+        tiltHigh.setCutoff (1060.0, fs);
+        peakLow.set (voicing->peakLowHz > 0.0 ? voicing->peakLowHz : 100.0, 1.0, voicing->peakLowDb, fs);
         updateGain();
         updateTone();
     }
@@ -133,7 +153,11 @@ private:
 
     void updateTone() noexcept
     {
-        toneLp.setCutoff (voicing->toneMinHz * std::pow (voicing->toneRange, toneControl < 0.0 ? 0.5 : toneControl), fs);
+        const double tone = toneControl < 0.0 ? 0.5 : toneControl;
+        toneLp.setCutoff (voicing->toneMinHz * std::pow (voicing->toneRange, tone), fs);
+        tiltMix = tone;
+        peakHigh.set (voicing->peakHighHz > 0.0 ? voicing->peakHighHz : 1000.0, 1.2,
+                      voicing->tonePeak ? voicing->peakHighDb * (0.25 + 0.75 * tone) : voicing->peakHighDb, fs);
     }
 
     static constexpr double pi = 3.14159265358979323846;
@@ -144,8 +168,9 @@ private:
     const DistortionVoicing* voicing = &distortions::classic;
     double fs = 48000.0, k = 0.0, gain = 10.0;
     double v = 0.0, fPrev = 0.0, gainControl = -1.0, toneControl = -1.0;
-    OnePole inputHp, toneLp, opampLp, lowLp;
-    PeakFilter scoop;
+    double tiltMix = 0.5;
+    OnePole inputHp, toneLp, opampLp, lowLp, tiltLow, tiltHigh;
+    PeakFilter scoop, peakLow, peakHigh;
     Smoothed level;
 };
 }

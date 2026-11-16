@@ -14,19 +14,20 @@ Funciona como aplicación independiente y como plugin (VST3 en Windows y Mac, AU
 | Compresor | | Detector de pico, relación 4:1 con codo suave |
 | Octavador | | Divisor de frecuencia analógico: añade la octava inferior (monofónico) |
 | Phaser | | Cuatro etapas pasa-todo con realimentación |
-| Overdrive | Mid Boost, Blues, Transparent, Bass Drive | Circuito de diodos en la realimentación de un operacional, resuelto por Newton-Raphson en cada muestra |
-| Distorsión | Classic, Rodent, Metal, Bass Distortion | Circuito de recorte duro: operacional de alta ganancia y diodos a masa, resuelto igual |
-| Fuzz | Vintage, Octave, Bass Fuzz | Dos etapas de saturación asimétrica (modelo de comportamiento, no de circuito) |
-| Amplificador de guitarra | Clean American, Tweed, Class A Chime, British Crunch, High Gain, Modern Lead | Previo de varias etapas de válvula, control de tonos calculado desde el circuito real y etapa de potencia con sag |
+| Overdrive | Mid Boost, Blues, Transparent, Bass Drive, Asym Drive, Treble Boost | Circuito de diodos en la realimentación de un operacional, resuelto por Newton-Raphson en cada muestra |
+| Distorsión | Classic, Rodent, Metal, Bass Distortion, Orange, Swedish, Bass Modern | Circuito de recorte duro: operacional de alta ganancia y diodos a masa, resuelto igual |
+| Fuzz | Vintage, Octave, Bass Fuzz, Big Fuzz | Dos etapas de saturación asimétrica (modelo de comportamiento, no de circuito) |
+| Amplificador de guitarra | Clean American, Tweed, Class A Chime, British Crunch, Plexi, Thick Crunch, Jazz Clean, Brit Clean 100, High Gain, Modern Lead, Rectified | Previo de varias etapas de válvula, control de tonos calculado desde el circuito real y etapa de potencia con sag |
 | Capturas neuronales | Cualquier archivo `.nam` | Carga capturas de amplis y pedales reales en formato Neural Amp Modeler; sustituyen al ampli modelado |
-| Amplificador de bajo | Bass Tube, Bass Clean, Bass Rock | Igual, con respuesta extendida en graves |
+| Amplificador de bajo | Bass Tube, Bass Clean, Bass Rock, Bass Studio, Bass DI | Igual, con respuesta extendida en graves |
 | Pantalla | Guitar 4x12, Guitar 2x12 Open, Guitar 1x12, Bass 8x10, Bass 1x15 | Pantallas integradas por filtros, o carga de respuestas a impulso propias (WAV/AIFF) sin latencia |
-| Ecualizador | | Cuatro bandas de ±12 dB: 100 Hz, 400 Hz, 1,6 kHz y 5 kHz |
+| Ecualizador gráfico | | Siete bandas de ±12 dB, de 100 Hz a 6,4 kHz |
 | Flanger | | Retardo de 1 a 6 ms modulado, con realimentación |
 | Chorus | | Estéreo, con retardo modulado en cuadratura |
 | Tremolo | | Modulación de volumen de 1 a 12 Hz |
-| Delay | | Hasta 1,5 s, con realimentación filtrada |
-| Reverb | | Estéreo, algoritmo Freeverb |
+| Delay | Analógico, Cinta | Hasta 1,5 s; el de cinta fluctúa, se oscurece y satura en cada repetición |
+| Reverb | Sala, Muelles | Sala con algoritmo Freeverb; muelles con tres líneas dispersivas |
+| Looper | | Hasta 60 s: grabar, repetir y sobregrabar capas; siempre al final de la cadena |
 
 Los modelos "Bass" de los pedales conservan los graves limpios y solo saturan el resto, para que el bajo no pierda cuerpo.
 
@@ -34,7 +35,7 @@ Orden de la señal: pedales de antes del ampli → amplificador → pantalla →
 
 ## Presets
 
-Hay 15 presets de fábrica (10 de guitarra y 5 de bajo) y se pueden guardar los propios, que se escriben como archivos `.espreset` en `Documentos/EffectSuite/Presets`. Un preset guarda pedales, ampli, pantalla, IR y captura; no cambia los ajustes del equipo (ganancia y canal de entrada, nivel de salida y calidad).
+Hay 26 presets de fábrica (18 de guitarra y 8 de bajo) y se pueden guardar los propios, que se escriben como archivos `.espreset` en `Documentos/EffectSuite/Presets`. Un preset guarda pedales, ampli, pantalla, IR y captura; no cambia los ajustes del equipo (ganancia y canal de entrada, nivel de salida y calidad).
 
 El procesado añade unas 4 muestras de latencia (0,1 ms). El resto de la latencia depende del driver y del tamaño de búfer de la interfaz de audio.
 

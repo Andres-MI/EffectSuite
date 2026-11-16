@@ -6,10 +6,12 @@
 #include "Compressor.h"
 #include "Distortion.h"
 #include "Fuzz.h"
+#include "Looper.h"
 #include "Modulation.h"
 #include "NeuralAmp.h"
 #include "NoiseGate.h"
 #include "Overdrive.h"
+#include "SpringReverb.h"
 #include "TimeEffects.h"
 
 namespace fx
@@ -43,7 +45,7 @@ struct ChainParams
     bool  cabOn = true;
     int   cabModel = 0;
     bool  eqOn = false;
-    float eqLow = 0.0f, eqLowMid = 0.0f, eqHighMid = 0.0f, eqHigh = 0.0f;      // dB
+    float eqBands[7] {};        // dB, de 100 Hz a 6,4 kHz
     bool  flangerOn = false;
     float flangerRate = 0.3f, flangerDepth = 0.6f, flangerFeedback = 0.5f;
     bool  chorusOn = false;
@@ -51,8 +53,12 @@ struct ChainParams
     bool  tremOn = false;
     float tremRate = 0.5f, tremDepth = 0.6f;
     bool  delayOn = false;
+    int   delayModel = 0;       // 0 = analógico, 1 = cinta
     float delayTimeMs = 380.0f, delayFeedback = 0.35f, delayMix = 0.3f;
     bool  reverbOn = false;
+    int   reverbModel = 0;      // 0 = sala, 1 = muelles
+    bool  looperOn = false;
+    float looperLevel = 0.8f;
     float reverbSize = 0.5f, reverbMix = 0.25f;
     float outputDb = 0.0f;
     int   quality = 1;          // sobremuestreo: -1 = ninguno (1x), 0 = 2x, 1 = 4x, 2 = 8x
@@ -154,6 +160,8 @@ public:
         tremolo.prepare (fs);
         chorus.prepare (fs);
         delay.prepare (fs);
+        spring.prepare (fs);
+        looper.prepare (fs);
         reverb.setSampleRate (fs);
         reverb.reset();
         reverbSize = reverbMix = -1.0f;
@@ -230,6 +238,10 @@ public:
     void clearNeuralModel()                                         { neural.clear(); }
     bool hasNeuralModel() const noexcept                            { return neural.isLoaded(); }
 
+    /** El looper, para mandarle órdenes y consultar su estado desde la interfaz. */
+    Looper& getLooper() noexcept { return looper; }
+    const Looper& getLooper() const noexcept { return looper; }
+
     /** Procesa numSamples (<= maxBlockSize de prepare).
 
         data es la entrada mono y se usa como búfer de trabajo; la salida queda en left y right.
@@ -242,6 +254,7 @@ public:
         const Discrete wanted { oversamplerIndex (p.quality), p.odModel, p.distModel, p.fuzzModel, p.ampModel,
                                 juce::jlimit (0, numCabs - 1, p.cabModel), p.wahMode,
                                 neural.isLoaded(), userIrLoaded.load (std::memory_order_relaxed),
+                                p.delayModel, p.reverbModel,
                                 validOrder (p.preOrder), validOrder (p.postOrder) };
 
         if (firstBlock)
@@ -278,8 +291,10 @@ public:
         wah.setControls (applied.wahMode, p.wahPosition, p.wahQ);
         octaver.setControls (p.octSub, p.octDry);
         phaser.setControls (p.phaserRate, p.phaserDepth, p.phaserFeedback);
-        equalizer.setControls (p.eqLow, p.eqLowMid, p.eqHighMid, p.eqHigh);
-        equalizerR.setControls (p.eqLow, p.eqLowMid, p.eqHighMid, p.eqHigh);
+        equalizer.setControls (p.eqBands);
+        equalizerR.setControls (p.eqBands);
+        delay.setTape (applied.delayModel == 1);
+        spring.setControls (p.reverbSize, p.reverbMix);
         flanger.setControls (p.flangerRate, p.flangerDepth, p.flangerFeedback);
         flangerR.setControls (p.flangerRate, p.flangerDepth, p.flangerFeedback);
         tremolo.setControls (p.tremRate, p.tremDepth);
@@ -351,7 +366,7 @@ public:
         if (chorusFade.set (p.chorusOn))    chorus.reset();
         if (tremFade.set (p.tremOn))        tremolo.reset();
         if (delayFade.set (p.delayOn))      delay.reset();
-        if (reverbFade.set (p.reverbOn))    reverb.reset();
+        if (reverbFade.set (p.reverbOn))    { reverb.reset(); spring.reset(); }
         muteFade.set (p.mute);
 
         // --- Entrada
@@ -495,7 +510,18 @@ public:
                     break;
 
                 case postReverb:
-                    if (reverbFade.active())
+                    if (reverbFade.active() && applied.reverbModel == 1)
+                    {
+                        for (int i = 0; i < numSamples; ++i)
+                        {
+                            float l = left[i], r = right[i];
+                            spring.process (l, r);
+                            const float m = reverbFade.next();
+                            left[i]  += m * (l - left[i]);
+                            right[i] += m * (r - right[i]);
+                        }
+                    }
+                    else if (reverbFade.active())
                     {
                         float* wetL = scratchA.data();
                         float* wetR = scratchB.data();
@@ -515,6 +541,9 @@ public:
                 default: break;
             }
         }
+
+        // --- Looper: siempre al final, para que grabe y repita el sonido ya terminado
+        looper.process (left, right, numSamples, p.looperLevel, p.looperOn);
 
         // --- Salida: nivel, silencio del afinador, bajada para los cambios de modelo y techo de seguridad
         bool finite = true;
@@ -561,6 +590,7 @@ private:
     {
         int quality = 1, odModel = 0, distModel = 0, fuzzModel = 0, ampModel = 0, cabModel = 0, wahMode = 0;
         bool neural = false, userIr = false;
+        int delayModel = 0, reverbModel = 0;
         std::array<juce::uint8, 8> preOrder  { 0, 1, 2, 3, 4, 5, 6, 7 };
         std::array<juce::uint8, 6> postOrder { 0, 1, 2, 3, 4, 5 };
         bool operator== (const Discrete&) const = default;
@@ -603,6 +633,7 @@ private:
         overdrive.reset(); distortion.reset(); fuzz.reset(); amp.reset();
         equalizer.reset(); equalizerR.reset(); flanger.reset(); flangerR.reset(); chorus.reset(); tremolo.reset(); delay.reset();
         reverb.reset();
+        spring.reset();
         resetCabinet();
     }
 
@@ -635,6 +666,8 @@ private:
     Chorus chorus;
     Delay delay;
     juce::Reverb reverb;
+    SpringReverb spring;
+    Looper looper;
     float reverbSize = -1.0f, reverbMix = -1.0f;
     juce::dsp::Convolution convolution;
     std::array<std::array<juce::dsp::IIR::Coefficients<float>::Ptr, 6>, numCabs> cabFilters;

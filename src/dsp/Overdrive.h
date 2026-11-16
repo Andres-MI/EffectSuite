@@ -1,5 +1,6 @@
 #pragma once
 #include "OnePole.h"
+#include "Saturator.h"
 
 namespace fx
 {
@@ -13,6 +14,7 @@ struct OverdriveVoicing
     double lowBlend;        // graves limpios (< 150 Hz) añadidos a la salida, para bajo
     double toneMinHz, toneRange;
     double outputGain;
+    bool booster = false;   // true = realce de agudos de un transistor en lugar del circuito de diodos
 };
 
 namespace overdrives
@@ -22,8 +24,12 @@ namespace overdrives
     inline constexpr OverdriveVoicing transparent { "Transparent",  100e-9, 2, 2, 0.6, 0.0, 1200.0, 6.0, 0.6 };
     inline constexpr OverdriveVoicing bass        { "Bass Drive",   330e-9, 1, 1, 0.0, 1.0, 800.0, 6.0, 0.9 };
 
-    inline constexpr const OverdriveVoicing* all[] { &midBoost, &blues, &transparent, &bass };
-    inline constexpr int count = 4;
+    inline constexpr OverdriveVoicing asymmetric  { "Asym Drive",   47e-9,  2, 1, 0.0, 0.0, 720.0, 6.5, 0.8 };
+    inline constexpr OverdriveVoicing trebleBoost { "Treble Boost", 13e-9,  1, 1, 0.0, 0.0, 3000.0, 4.0, 0.45, true };
+
+    // El orden es el del parámetro guardado en los presets: añadir siempre al final.
+    inline constexpr const OverdriveVoicing* all[] { &midBoost, &blues, &transparent, &bass, &asymmetric, &trebleBoost };
+    inline constexpr int count = 6;
 }
 
 /** Overdrive de diodos en el lazo de realimentación.
@@ -55,6 +61,7 @@ public:
         toneLp.reset();
         lowLp.reset();
         dcBlock.reset();
+        boosterStage.reset();
         v = fPrev = 0.0;
         level.snap (level.target);
     }
@@ -75,6 +82,7 @@ public:
     void setControls (double drive, double tone, double levelPos) noexcept
     {
         Rf = 51e3 + 500e3 * drive * drive;      // potenciómetro de 500k, ley aproximadamente logarítmica
+        boosterGain = 2.0 + 30.0 * drive * drive;
         level.target = 2.0 * levelPos * levelPos * voicing->outputGain;
 
         if (tone != tonePos)
@@ -86,6 +94,14 @@ public:
 
     inline double process (double x) noexcept
     {
+        if (voicing->booster)
+        {
+            // Realce de agudos: un condensador pequeño deja pasar sobre todo los agudos hacia un
+            // transistor que satura de forma suave y asimétrica
+            const double boosted = boosterStage.process (boosterGain * (inputHp.hp (x) + 0.08 * x), boosterBias, boosterBiasTanh);
+            return dcBlock.hp (toneLp.lp (boosted)) * level.next();
+        }
+
         const double i = inputHp.hp (x) / Rin;       // corriente que entra en la red de realimentación
 
         // C dV/dt = i - V/Rf - Is (exp(V/(np nVt)) - exp(-V/(nn nVt)))
@@ -137,6 +153,10 @@ private:
     const OverdriveVoicing* voicing = &overdrives::midBoost;
     double fs = 48000.0, k = 0.0, Rf = 51e3, aPos = invNVt, aNeg = invNVt;
     double v = 0.0, fPrev = 0.0, tonePos = -1.0;
+    static constexpr double boosterBias = 0.35;
+    const double boosterBiasTanh = std::tanh (boosterBias);
+    double boosterGain = 4.0;
+    Saturator boosterStage;
     OnePole inputHp, toneLp, lowLp, dcBlock;
     Smoothed level;
 };

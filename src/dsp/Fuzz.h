@@ -12,6 +12,9 @@ struct FuzzVoicing
     double lowBlend;        // graves limpios (< 120 Hz) añadidos a la salida, para bajo
     double toneMinHz, toneRange;
     double outputGain;
+    double bias1 = 0.6, bias2 = -0.2;   // asimetría de cada etapa; 0 = recorte simétrico
+    double secondGain = 3.0;            // ganancia entre las dos etapas
+    bool tiltTone = false;              // control de tono que mezcla graves y agudos con un valle en medios
 };
 
 namespace fuzzes
@@ -20,8 +23,11 @@ namespace fuzzes
     inline constexpr FuzzVoicing octave  { "Octave",    80.0, 0.8, 0.0, 2000.0, 4.0, 1.0 };
     inline constexpr FuzzVoicing bass    { "Bass Fuzz", 20.0, 0.0, 1.5, 900.0,  5.0, 0.9 };
 
-    inline constexpr const FuzzVoicing* all[] { &vintage, &octave, &bass };
-    inline constexpr int count = 3;
+    inline constexpr FuzzVoicing big     { "Big Fuzz",  60.0, 0.0, 0.0, 1500.0, 5.0, 1.6, 0.05, -0.05, 12.0, true };
+
+    // El orden es el del parámetro guardado en los presets: añadir siempre al final.
+    inline constexpr const FuzzVoicing* all[] { &vintage, &octave, &bass, &big };
+    inline constexpr int count = 4;
 }
 
 /** Fuzz de dos etapas muy asimétricas.
@@ -50,6 +56,7 @@ public:
     void reset() noexcept
     {
         inputHp.reset(); couplingHp.reset(); toneLp.reset(); lowLp.reset(); rectifierHp.reset(); dcBlock.reset();
+        tiltLow.reset(); tiltHigh.reset();
         rectX = rectF = 0.0;
         first.reset(); second.reset();
         gain.snap (gain.target);
@@ -92,29 +99,36 @@ public:
             u += voicing->octave * (2.0 * rectifierHp.hp (rectified) - u);
         }
 
-        double y = first.process (u, bias1, tanhBias1);
-        y = second.process (couplingHp.hp (y) * 3.0, bias2, tanhBias2);
-        return (dcBlock.hp (toneLp.lp (y)) + voicing->lowBlend * lowLp.lp (x)) * level.next();
+        double y = first.process (u, voicing->bias1, tanhBias1);
+        y = second.process (couplingHp.hp (y) * voicing->secondGain, voicing->bias2, tanhBias2);
+
+        const double toned = voicing->tiltTone ? 1.6 * (1.0 - tiltMix) * tiltLow.lp (y) + 1.2 * tiltMix * tiltHigh.hp (y)
+                                               : toneLp.lp (y);
+        return (dcBlock.hp (toned) + voicing->lowBlend * lowLp.lp (x)) * level.next();
     }
 
 private:
     void applyVoicing() noexcept
     {
         inputHp.setCutoff (voicing->inputHpHz, fs);
+        tiltLow.setCutoff (400.0, fs);
+        tiltHigh.setCutoff (1500.0, fs);
+        tanhBias1 = std::tanh (voicing->bias1);
+        tanhBias2 = std::tanh (voicing->bias2);
         updateTone();
     }
 
     void updateTone() noexcept
     {
-        toneLp.setCutoff (voicing->toneMinHz * std::pow (voicing->toneRange, toneControl < 0.0 ? 0.5 : toneControl), fs);
+        tiltMix = toneControl < 0.0 ? 0.5 : toneControl;
+        toneLp.setCutoff (voicing->toneMinHz * std::pow (voicing->toneRange, tiltMix), fs);
     }
 
-    static constexpr double bias1 = 0.6, bias2 = -0.2;
-    const double tanhBias1 = std::tanh (bias1), tanhBias2 = std::tanh (bias2);
+    double tanhBias1 = 0.0, tanhBias2 = 0.0, tiltMix = 0.5;
 
     const FuzzVoicing* voicing = &fuzzes::vintage;
     double fs = 48000.0, toneControl = -1.0;
-    OnePole inputHp, couplingHp, toneLp, lowLp, rectifierHp, dcBlock;
+    OnePole inputHp, couplingHp, toneLp, lowLp, rectifierHp, dcBlock, tiltLow, tiltHigh;
     double rectX = 0.0, rectF = 0.0;
     Saturator first, second;
     Smoothed gain, level;

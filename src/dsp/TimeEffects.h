@@ -102,6 +102,8 @@ public:
         fs = sampleRate;
         line.prepare ((int) (maxSeconds * fs));
         feedbackLp.setCutoff (4000.0, fs);
+        tapeLp.setCutoff (2800.0, fs);
+        tapeHp.setCutoff (140.0, fs);
         time.prepare (fs, 120.0);
         mix.prepare (fs);
         reset();
@@ -111,6 +113,9 @@ public:
     {
         line.reset();
         feedbackLp.reset();
+        tapeLp.reset();
+        tapeHp.reset();
+        wow = flutter = 0.0;
         time.snap (time.target);
         mix.snap (mix.target);
     }
@@ -124,9 +129,22 @@ public:
         mix.target = mixPos;
     }
 
+    /** true = eco de cinta: el tiempo fluctúa un poco, y cada repetición sale más oscura, con menos graves y algo saturada. */
+    void setTape (bool shouldBeTape) noexcept { tape = shouldBeTape; }
+
     /** Devuelve solo la señal retardada, ya multiplicada por la mezcla. */
     inline float process (float x) noexcept
     {
+        if (tape)
+        {
+            wow += 6.283185307179586 * 0.55 / fs;       if (wow > 6.283185307179586) wow -= 6.283185307179586;
+            flutter += 6.283185307179586 * 6.3 / fs;    if (flutter > 6.283185307179586) flutter -= 6.283185307179586;
+            const double speed = 1.0 + 0.0022 * std::sin (wow) + 0.0006 * std::sin (flutter);
+            const double head = tapeHp.hp (tapeLp.lp (line.read (time.next() * speed)));
+            line.write (x + (float) std::tanh (1.1 * feedback * head));
+            return (float) (head * mix.next());
+        }
+
         const float wet = line.read (time.next());
         line.write (x + (float) (feedback * feedbackLp.lp (wet)));
         return wet * (float) mix.next();
@@ -135,7 +153,9 @@ public:
 private:
     double fs = 48000.0, feedback = 0.0;
     DelayLine line;
-    OnePole feedbackLp;
+    OnePole feedbackLp, tapeLp, tapeHp;
     Smoothed time, mix;
+    double wow = 0.0, flutter = 0.0;
+    bool tape = false;
 };
 }

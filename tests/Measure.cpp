@@ -451,7 +451,7 @@ void testStability()
         p.gateOn = u (rng) > 0.5f; p.gateThresholdDb = -90.0f + 70.0f * u (rng);
         p.odOn = u (rng) > 0.3f; p.odDrive = u (rng); p.odTone = u (rng); p.odLevel = u (rng);
         p.ampOn = u (rng) > 0.2f; p.ampModel = (int) (u (rng) * (fx::voicings::count - 0.01f));
-        p.odModel = (int) (u (rng) * 3.99f); p.distModel = (int) (u (rng) * 3.99f); p.fuzzModel = (int) (u (rng) * 2.99f); p.cabModel = (int) (u (rng) * 4.99f);
+        p.odModel = (int) (u (rng) * (fx::overdrives::count - 0.01f)); p.distModel = (int) (u (rng) * (fx::distortions::count - 0.01f)); p.fuzzModel = (int) (u (rng) * (fx::fuzzes::count - 0.01f)); p.cabModel = (int) (u (rng) * 4.99f);
         p.ampGain = u (rng); p.ampBass = u (rng); p.ampMid = u (rng); p.ampTreble = u (rng); p.ampPresence = u (rng); p.ampMaster = u (rng);
         p.cabOn = u (rng) > 0.3f; p.quality = (int) (u (rng) * 2.99f);
         p.compOn = u (rng) > 0.5f; p.compSustain = u (rng); p.compAttack = u (rng); p.compLevel = u (rng);
@@ -463,7 +463,9 @@ void testStability()
         p.wahOn = u (rng) > 0.5f; p.wahMode = u (rng) > 0.5f ? 1 : 0; p.wahPosition = u (rng); p.wahQ = u (rng);
         p.octOn = u (rng) > 0.5f; p.octSub = u (rng); p.octDry = u (rng);
         p.phaserOn = u (rng) > 0.5f; p.phaserRate = u (rng); p.phaserDepth = u (rng); p.phaserFeedback = u (rng);
-        p.eqOn = u (rng) > 0.5f; p.eqLow = 24.0f * u (rng) - 12.0f; p.eqLowMid = 24.0f * u (rng) - 12.0f; p.eqHighMid = 24.0f * u (rng) - 12.0f; p.eqHigh = 24.0f * u (rng) - 12.0f;
+        p.eqOn = u (rng) > 0.5f; for (auto& band : p.eqBands) band = 24.0f * u (rng) - 12.0f;
+        p.delayModel = u (rng) > 0.5f ? 1 : 0; p.reverbModel = u (rng) > 0.5f ? 1 : 0; p.looperOn = u (rng) > 0.5f; p.looperLevel = u (rng);
+        if (b % 97 == 0) chain.getLooper().pressMain();
         p.flangerOn = u (rng) > 0.5f; p.flangerRate = u (rng); p.flangerDepth = u (rng); p.flangerFeedback = u (rng);
         p.tremOn = u (rng) > 0.5f; p.tremRate = u (rng); p.tremDepth = u (rng);
 
@@ -600,6 +602,107 @@ void testPedals()
 }
 
 //==============================================================================
+void testSecondBatch()
+{
+    std::printf ("\n14. Reverb de muelles, eco de cinta y looper\n");
+    const double fs = 48000.0;
+
+    // Reverb de muelles: deja cola, se apaga, es estéreo y no dispara el nivel
+    {
+        fx::GuitarChain chain;
+        chain.prepare (fs, 64);
+        auto p = cleanParams();
+        p.reverbOn = true; p.reverbModel = 1; p.reverbSize = 0.6f; p.reverbMix = 0.5f;
+        std::vector<float> x (5 * 48000, 0.0f), right;
+        for (int k = 0; k < 4800; ++k) x[(size_t) k] = (float) (0.3 * std::sin (2.0 * pi * 440.0 * k / fs));
+        runChain (chain, x, p, 64, &right);
+        auto rms = [&] (int from, int to) { double sum = 0.0; for (int k = from; k < to; ++k) sum += (double) x[(size_t) k] * x[(size_t) k]; return std::sqrt (sum / (to - from)); };
+        const double early = rms (9600, 19200), late = rms (4 * 48000, 5 * 48000);
+        double peak = 0.0, stereo = 0.0;
+        for (size_t k = 0; k < x.size(); ++k) { peak = std::max (peak, (double) std::abs (x[k])); stereo = std::max (stereo, (double) std::abs (x[k] - right[k])); }
+        std::printf ("   muelles: cola a 0,2-0,4 s %.1f dB; a 4-5 s %.1f dB; pico %.2f\n", dB (early), dB (late), peak);
+        check (early > 1e-3 && late < 0.05 * early && stereo > 1e-3 && peak < 0.6, "la reverb de muelles deja cola estéreo, se apaga y no dispara el nivel");
+    }
+
+    // Eco de cinta: las repeticiones llegan a su tiempo (con la pequeña fluctuación de la cinta) y cada vez más oscuras
+    {
+        const int order = 13, n = 1 << order;
+        auto run = [&] (int model)
+        {
+            fx::GuitarChain chain;
+            chain.prepare (fs, 64);
+            auto p = cleanParams();
+            p.delayOn = true; p.delayModel = model; p.delayTimeMs = 300.0f; p.delayMix = 1.0f; p.delayFeedback = 0.6f;
+            std::vector<float> x (96000, 0.0f);
+            std::mt19937 rng (5);
+            std::uniform_real_distribution<float> noise (-0.3f, 0.3f);
+            for (int k = 2000; k < 2000 + 2400; ++k) x[(size_t) k] = noise (rng);       // ráfaga de ruido de 50 ms
+            runChain (chain, x, p);
+            return x;
+        };
+        auto brightness = [&] (const std::vector<float>& x, int start)
+        {
+            const auto spec = powerSpectrum (x.data() + start, order);
+            double low = 0.0, high = 0.0;
+            for (int b = 1; b < n / 2; ++b) (b * fs / n < 2000.0 ? low : high) += spec[(size_t) b];
+            return 10.0 * std::log10 (std::max (high, 1e-30) / std::max (low, 1e-30));
+        };
+        const auto analog = run (0), tape = run (1);
+        const int first = 2000 + 14400 - 600, second = first + 14400;
+        double energy = 0.0;
+        for (int k = first; k < first + 4000; ++k) energy += (double) tape[(size_t) k] * tape[(size_t) k];
+        std::printf ("   brillo (agudos frente a graves) de la 1.ª y 2.ª repetición: analógico %.1f / %.1f dB, cinta %.1f / %.1f dB\n",
+                     brightness (analog, first), brightness (analog, second), brightness (tape, first), brightness (tape, second));
+        check (energy > 1e-3 && brightness (tape, first) < brightness (analog, first) - 2.0 && brightness (tape, second) < brightness (tape, first) - 1.0,
+               "el eco de cinta repite a su tiempo, más oscuro que el analógico y oscureciéndose en cada vuelta");
+    }
+
+    // Looper: graba una frase, la repite idéntica, admite capas y se borra
+    {
+        fx::GuitarChain chain;
+        chain.prepare (fs, 64);
+        auto p = cleanParams();
+        p.looperOn = true; p.looperLevel = 1.0f;
+        auto& looper = chain.getLooper();
+        auto play = [&] (double hz, int samples) { auto x = hz > 0.0 ? sine (hz, fs, 0.1, (size_t) samples) : std::vector<float> ((size_t) samples, 0.0f); runChain (chain, x, p); return x; };
+
+        looper.pressMain();
+        play (220.0, 48000);                                    // graba 1 s
+        looper.pressMain();                                     // cierra el bucle y reproduce
+        const auto firstPass = play (0.0, 48000), secondPass = play (0.0, 48000);
+        double repeatError = 0.0, loopPeak = 0.0;
+        // Se saltan las primeras muestras: ahí todavía sale la cola de la nota por la latencia del sobremuestreo
+        for (size_t k = 256; k < firstPass.size(); ++k) { repeatError = std::max (repeatError, (double) std::abs (firstPass[k] - secondPass[k])); loopPeak = std::max (loopPeak, (double) std::abs (firstPass[k])); }
+        check (looper.getState() == fx::Looper::State::playing && std::abs (looper.getLengthSeconds() - 1.0) < 0.01 && loopPeak > 0.09 && repeatError < 1e-6,
+               "el looper graba un segundo y lo repite idéntico en cada vuelta");
+
+        looper.pressMain();                                     // sobregrabar
+        play (330.0, 48000);
+        looper.pressMain();                                     // vuelve a reproducir
+        const auto layered = play (0.0, 48000);
+        const int order = 15, n = 1 << order;
+        const auto spec = powerSpectrum (layered.data(), order);
+        auto level = [&] (double hz) { return spec[(size_t) std::lround (hz * n / fs)]; };
+        check (level (220.0) > 100.0 * level (275.0) && level (330.0) > 100.0 * level (275.0), "la capa nueva se suma a la anterior");
+
+        p.looperOn = false;
+        const auto muted = play (0.0, 9600);
+        double mutedPeak = 0.0;
+        for (float v : muted) mutedPeak = std::max (mutedPeak, (double) std::abs (v));
+        p.looperOn = true;
+        looper.pressStop();
+        play (0.0, 4800);
+        const auto stopped = play (0.0, 9600);
+        double stoppedPeak = 0.0;
+        for (float v : stopped) stoppedPeak = std::max (stoppedPeak, (double) std::abs (v));
+        looper.pressClear();
+        play (0.0, 4800);
+        check (mutedPeak < 1e-6 && stoppedPeak < 1e-6 && looper.getState() == fx::Looper::State::empty && looper.getLengthSeconds() == 0.0,
+               "apagado o parado no suena, y borrar lo deja vacío");
+    }
+}
+
+//==============================================================================
 /** Nivel en dB de un tono (bin exacto) a la salida de la cadena. */
 double toneLevel (const fx::ChainParams& p, int bin, double amp = 0.1)
 {
@@ -622,18 +725,17 @@ void testModulation()
     // Ecualizador: cada banda sube y baja lo que marca su control
     {
         bool ok = true;
-        struct Band { const char* name; float fx::ChainParams::* gain; double hz; };
-        for (auto b : { Band { "graves", &fx::ChainParams::eqLow, 50.0 }, Band { "medios graves", &fx::ChainParams::eqLowMid, 400.0 },
-                        Band { "medios agudos", &fx::ChainParams::eqHighMid, 1600.0 }, Band { "agudos", &fx::ChainParams::eqHigh, 12000.0 } })
+        for (int band = 0; band < fx::Equalizer::numBands; ++band)
         {
+            const double hz = fx::Equalizer::frequencies[band];
             auto p = cleanParams();
             p.eqOn = true;
-            const double flat = toneLevel (p, binOf (b.hz));
-            p.*(b.gain) = 9.0f;
-            const double up = toneLevel (p, binOf (b.hz)) - flat;
-            p.*(b.gain) = -9.0f;
-            const double down = toneLevel (p, binOf (b.hz)) - flat;
-            std::printf ("   ecualizador, %-14s +9 dB -> %+.1f dB, -9 dB -> %+.1f dB\n", b.name, up, down);
+            const double flat = toneLevel (p, binOf (hz));
+            p.eqBands[band] = 9.0f;
+            const double up = toneLevel (p, binOf (hz)) - flat;
+            p.eqBands[band] = -9.0f;
+            const double down = toneLevel (p, binOf (hz)) - flat;
+            std::printf ("   ecualizador, banda de %4.0f Hz: +9 dB -> %+.1f dB, -9 dB -> %+.1f dB\n", hz, up, down);
             ok = ok && std::abs (up - 9.0) < 1.0 && std::abs (down + 9.0) < 1.0;
         }
         check (ok, "ecualizador: cada banda aplica la ganancia pedida (error < 1 dB)");
@@ -842,7 +944,7 @@ fx::ChainParams busyParams()
 {
     fx::ChainParams p;
     p.gateOn = false; p.compOn = true; p.odOn = true; p.ampOn = true; p.ampModel = 1; p.cabOn = true;
-    p.eqOn = true; p.eqLowMid = 3.0f; p.chorusOn = true; p.delayOn = true; p.reverbOn = true; p.phaserOn = true;
+    p.eqOn = true; p.eqBands[2] = 3.0f; p.chorusOn = true; p.delayOn = true; p.reverbOn = true; p.phaserOn = true;
     return p;
 }
 
@@ -967,8 +1069,9 @@ void testRobustness()
             fx::GuitarChain chain;
             chain.prepare (fs, 64);
             fx::ChainParams p;
-            p.gateOn = false; p.ampModel = model; p.cabModel = model >= 6 ? 3 : 0;
-            auto x = syntheticRiffForLevels (fs, model >= 6 ? 0.5 : 1.0);
+            const bool bass = fx::voicings::all[model]->bass;
+            p.gateOn = false; p.ampModel = model; p.cabModel = bass ? 3 : 0;
+            auto x = syntheticRiffForLevels (fs, bass ? 0.5 : 1.0);
             runChain (chain, x, p);
             double sum = 0.0;
             for (float v : x) sum += (double) v * v;
@@ -1149,6 +1252,7 @@ int main (int argc, char** argv)
     testModulation();
     testNeural();
     testRobustness();
+    testSecondBatch();
 
     if (argc == 3 && juce::String (argv[1]) == "--render")
         renderDemos (juce::File::getCurrentWorkingDirectory().getChildFile (juce::String (argv[2])));

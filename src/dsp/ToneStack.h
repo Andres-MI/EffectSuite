@@ -19,6 +19,9 @@ namespace tonestacks
     inline constexpr ToneStackValues tweed    { 250e3, 1e6,   25e3, 56e3,  250e-12, 20e-9,  20e-9 };
     inline constexpr ToneStackValues chime    { 1e6,   1e6,   10e3, 100e3, 50e-12,  22e-9,  22e-9 };
     inline constexpr ToneStackValues bass     { 250e3, 250e3, 25e3, 100e3, 470e-12, 100e-9, 47e-9 };
+    inline constexpr ToneStackValues thick    { 250e3, 1e6,   50e3, 56e3,  330e-12, 22e-9,  47e-9 };
+    inline constexpr ToneStackValues rectified { 250e3, 250e3, 25e3, 47e3,  500e-12, 22e-9,  22e-9 };
+    inline constexpr ToneStackValues flatClean { 250e3, 1e6,   100e3, 56e3, 220e-12, 47e-9,  47e-9 };
 }
 
 /** Control de tonos de tres bandas modelado a partir del circuito real.

@@ -67,7 +67,8 @@ public:
     //==========================================================================
     // Pedalera: qué pedales están colocados. Un pedal que no está en la pedalera no se muestra
     // y está apagado. El orden de la señal es fijo; esto solo decide cuáles se ven.
-    // Identificadores: gate, wah, comp, oct, phaser, od, dist, fuzz, eq, flanger, chorus, trem, delay, reverb.
+    // Identificadores: gate, wah, comp, oct, phaser, od, dist, fuzz, eq, flanger, chorus, trem, delay, reverb, looper.
+    // El looper se coloca y se quita como los demás, pero siempre suena al final de la cadena.
     // El parámetro de encendido de cada uno es el identificador seguido de "On".
 
     static const juce::StringArray& getAllPedalIds();
@@ -84,6 +85,17 @@ public:
 
     /** Cambia cada vez que la pedalera cambia (también al cargar un estado): el editor lo consulta en su temporizador. */
     int getBoardRevision() const noexcept { return boardRevision.load(); }
+
+    //==========================================================================
+    // Looper. Un pulsador hace el ciclo grabar -> reproducir -> sobregrabar -> reproducir.
+
+    void looperPress()  { chain.getLooper().pressMain(); }
+    void looperStop()   { chain.getLooper().pressStop(); }
+    void looperClear()  { chain.getLooper().pressClear(); }
+    fx::Looper::State getLooperState() const noexcept { return chain.getLooper().getState(); }
+    double getLooperSeconds() const noexcept          { return chain.getLooper().getLengthSeconds(); }
+    /** Posición dentro del bucle, de 0 a 1. */
+    float getLooperPosition() const noexcept          { return chain.getLooper().getPosition(); }
 
     //==========================================================================
     // Grabación de tomas: cada toma son dos archivos WAV de 24 bits en la carpeta de grabaciones,
@@ -174,7 +186,7 @@ private:
                            *wahOn, *wahMode, *wahPosition, *wahQ,
                            *octOn, *octSub, *octDry,
                            *phaserOn, *phaserRate, *phaserDepth, *phaserFeedback,
-                           *eqOn, *eqLow, *eqLowMid, *eqHighMid, *eqHigh,
+                           *eqOn,
                            *flangerOn, *flangerRate, *flangerDepth, *flangerFeedback,
                            *tremOn, *tremRate, *tremDepth,
                            *compOn, *compSustain, *compAttack, *compLevel,
@@ -188,6 +200,9 @@ private:
                            *reverbOn, *reverbSize, *reverbMix,
                            *outputLevel, *quality, *tunerMute, *metroOn, *metroBpm, *metroLevel;
     } params {};
+
+    std::atomic<float>* eqBandParams[fx::Equalizer::numBands] {};
+    std::atomic<float> *delayModelParam = nullptr, *reverbModelParam = nullptr, *looperOnParam = nullptr, *looperLevelParam = nullptr;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EffectSuiteProcessor)
 };

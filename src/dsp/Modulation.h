@@ -230,10 +230,13 @@ private:
     Smoothed depth;
 };
 
-/** Ecualizador de cuatro bandas: graves (100 Hz), medios graves (400 Hz), medios agudos (1,6 kHz) y agudos (5 kHz). */
+/** Ecualizador gráfico de siete bandas de una octava: 100, 200, 400, 800 Hz, 1,6, 3,2 y 6,4 kHz. */
 class Equalizer
 {
 public:
+    static constexpr int numBands = 7;
+    static constexpr double frequencies[numBands] { 100.0, 200.0, 400.0, 800.0, 1600.0, 3200.0, 6400.0 };
+
     void prepare (double sampleRate) noexcept
     {
         fs = sampleRate;
@@ -244,12 +247,15 @@ public:
     void reset() noexcept { for (auto& b : bands) b.reset(); }
 
     /** Ganancias en dB, de -12 a +12. */
-    void setControls (float low, float lowMid, float highMid, float high) noexcept
+    void setControls (const float* newGains) noexcept
     {
-        if (low == gains[0] && lowMid == gains[1] && highMid == gains[2] && high == gains[3])
+        bool changed = false;
+        for (int i = 0; i < numBands; ++i) changed = changed || newGains[i] != gains[i];
+
+        if (! changed)
             return;
 
-        gains[0] = low; gains[1] = lowMid; gains[2] = highMid; gains[3] = high;
+        for (int i = 0; i < numBands; ++i) gains[i] = newGains[i];
         update();
     }
 
@@ -263,14 +269,12 @@ public:
 private:
     void update() noexcept
     {
-        bands[0].setShelf (false, 100.0, gains[0], fs);
-        bands[1].set (400.0, 0.8, gains[1], fs);
-        bands[2].set (1600.0, 0.8, gains[2], fs);
-        bands[3].setShelf (true, 5000.0, gains[3], fs);
+        for (int i = 0; i < numBands; ++i)
+            bands[i].set (frequencies[i], 1.4, gains[i], fs);
     }
 
     double fs = 48000.0;
-    float gains[4] { 0, 0, 0, 0 };
-    PeakFilter bands[4];
+    float gains[numBands] {};
+    PeakFilter bands[numBands];
 };
 }

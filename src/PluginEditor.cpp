@@ -1124,12 +1124,12 @@ EffectSuiteEditor::EffectSuiteEditor (EffectSuiteProcessor& p)
         { "FUZZ",      "FUZZ",   0xff7d4bc2, "fuzzOn",   "fuzzModel", { { "Fuzz", "fuzzAmount" }, { "Tone", "fuzzTone" }, { "Level", "fuzzLevel" } } },
     };
     const PedalDef post[] = {
-        { "ECUALIZADOR", "EQ",    0xffddd2ae, "eqOn",      nullptr, { { "100", "eqLow", dB }, { "400", "eqLowMid", dB }, { "1.6k", "eqHighMid", dB }, { "5k", "eqHigh", dB } }, true },
+        { "ECUALIZADOR", "EQ",    0xffddd2ae, "eqOn",      nullptr, { { "100", "eq100", dB }, { "200", "eq200", dB }, { "400", "eq400", dB }, { "800", "eq800", dB }, { "1.6k", "eq1k6", dB }, { "3.2k", "eq3k2", dB }, { "6.4k", "eq6k4", dB } }, true },
         { "FLANGER",     "FLANG", 0xffe2c22e, "flangerOn", nullptr, { { "Rate", "flangerRate" }, { "Depth", "flangerDepth" }, { "Feedback", "flangerFeedback" } } },
         { "CHORUS",      "CHORUS", 0xff2f6fd6, "chorusOn", nullptr, { { "Rate", "chorusRate" }, { "Depth", "chorusDepth" }, { "Mix", "chorusMix" } } },
         { "TREMOLO",     "TREM",  0xff7d9440, "tremOn",    nullptr, { { "Rate", "tremRate" }, { "Depth", "tremDepth" } } },
-        { "DELAY",       "DELAY", 0xff1f9d93, "delayOn",   nullptr, { { "Time", "delayTime", ms }, { "Feedback", "delayFeedback" }, { "Mix", "delayMix" } } },
-        { "REVERB",      "REVERB", 0xff7fc4ea, "reverbOn", nullptr, { { "Size", "reverbSize" }, { "Mix", "reverbMix" } } },
+        { "DELAY",       "DELAY", 0xff1f9d93, "delayOn",   "delayModel", { { "Time", "delayTime", ms }, { "Feedback", "delayFeedback" }, { "Mix", "delayMix" } } },
+        { "REVERB",      "REVERB", 0xff7fc4ea, "reverbOn", "reverbModel", { { "Size", "reverbSize" }, { "Mix", "reverbMix" } } },
     };
 
     flow = std::make_unique<FlowStrip>();

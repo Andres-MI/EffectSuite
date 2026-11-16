@@ -82,8 +82,8 @@ APVTS::ParameterLayout EffectSuiteProcessor::createLayout()
     layout.add (std::make_unique<Choice> (id ("cabModel"), "Cabinet Model",
                                           juce::StringArray (fx::GuitarChain::cabNames, fx::GuitarChain::numCabs), 0));
     layout.add (std::make_unique<Bool> (id ("eqOn"), "EQ On", false));
-    for (auto band : { std::pair<const char*, const char*> { "eqLow", "EQ Low" }, { "eqLowMid", "EQ Low Mid" },
-                       { "eqHighMid", "EQ High Mid" }, { "eqHigh", "EQ High" } })
+    for (auto band : { std::pair<const char*, const char*> { "eq100", "EQ 100 Hz" }, { "eq200", "EQ 200 Hz" }, { "eq400", "EQ 400 Hz" },
+                       { "eq800", "EQ 800 Hz" }, { "eq1k6", "EQ 1.6 kHz" }, { "eq3k2", "EQ 3.2 kHz" }, { "eq6k4", "EQ 6.4 kHz" } })
         layout.add (std::make_unique<Float> (id (band.first), band.second, Range (-12.0f, 12.0f, 0.1f), 0.0f,
                                              juce::AudioParameterFloatAttributes().withLabel ("dB")));
 
@@ -102,14 +102,19 @@ APVTS::ParameterLayout EffectSuiteProcessor::createLayout()
     knob ("chorusMix", "Chorus Mix", 0.6f);
 
     layout.add (std::make_unique<Bool> (id ("delayOn"), "Delay On", false));
+    layout.add (std::make_unique<Choice> (id ("delayModel"), "Delay Model", juce::StringArray { juce::String::fromUTF8 ("Analógico"), "Cinta" }, 0));
     layout.add (std::make_unique<Float> (id ("delayTime"), "Delay Time", Range (20.0f, 1500.0f, 1.0f, 0.5f), 380.0f,
                                          juce::AudioParameterFloatAttributes().withLabel ("ms")));
     knob ("delayFeedback", "Delay Feedback", 0.35f);
     knob ("delayMix", "Delay Mix", 0.3f);
 
     layout.add (std::make_unique<Bool> (id ("reverbOn"), "Reverb On", false));
+    layout.add (std::make_unique<Choice> (id ("reverbModel"), "Reverb Model", juce::StringArray { "Sala", "Muelles" }, 0));
     knob ("reverbSize", "Reverb Size", 0.5f);
     knob ("reverbMix", "Reverb Mix", 0.25f);
+
+    layout.add (std::make_unique<Bool> (id ("looperOn"), "Looper On", false));
+    knob ("looperLevel", "Looper Level", 0.8f);
 
     layout.add (std::make_unique<Float> (id ("outputLevel"), "Output Level", Range (-24.0f, 12.0f, 0.1f), 0.0f,
                                          juce::AudioParameterFloatAttributes().withLabel ("dB")));
@@ -137,7 +142,7 @@ EffectSuiteProcessor::EffectSuiteProcessor()
                ref ("wahOn"), ref ("wahMode"), ref ("wahPosition"), ref ("wahQ"),
                ref ("octOn"), ref ("octSub"), ref ("octDry"),
                ref ("phaserOn"), ref ("phaserRate"), ref ("phaserDepth"), ref ("phaserFeedback"),
-               ref ("eqOn"), ref ("eqLow"), ref ("eqLowMid"), ref ("eqHighMid"), ref ("eqHigh"),
+               ref ("eqOn"),
                ref ("flangerOn"), ref ("flangerRate"), ref ("flangerDepth"), ref ("flangerFeedback"),
                ref ("tremOn"), ref ("tremRate"), ref ("tremDepth"),
                ref ("compOn"), ref ("compSustain"), ref ("compAttack"), ref ("compLevel"),
@@ -152,6 +157,15 @@ EffectSuiteProcessor::EffectSuiteProcessor()
                ref ("reverbOn"), ref ("reverbSize"), ref ("reverbMix"),
                ref ("outputLevel"), ref ("quality"), ref ("tunerMute"),
                ref ("metroOn"), ref ("metroBpm"), ref ("metroLevel") };
+
+    int band = 0;
+    for (auto* name : { "eq100", "eq200", "eq400", "eq800", "eq1k6", "eq3k2", "eq6k4" })
+        eqBandParams[band++] = ref (name);
+
+    delayModelParam = ref ("delayModel");
+    reverbModelParam = ref ("reverbModel");
+    looperOnParam = ref ("looperOn");
+    looperLevelParam = ref ("looperLevel");
 
     updateOrder();
     startTimerHz (30);
@@ -212,10 +226,13 @@ fx::ChainParams EffectSuiteProcessor::readParams() const
     p.phaserDepth     = params.phaserDepth->load();
     p.phaserFeedback  = params.phaserFeedback->load();
     p.eqOn            = params.eqOn->load() > 0.5f;
-    p.eqLow           = params.eqLow->load();
-    p.eqLowMid        = params.eqLowMid->load();
-    p.eqHighMid       = params.eqHighMid->load();
-    p.eqHigh          = params.eqHigh->load();
+    for (int i = 0; i < fx::Equalizer::numBands; ++i)
+        p.eqBands[i] = eqBandParams[i]->load();
+
+    p.delayModel      = (int) delayModelParam->load();
+    p.reverbModel     = (int) reverbModelParam->load();
+    p.looperOn        = looperOnParam->load() > 0.5f;
+    p.looperLevel     = looperLevelParam->load();
     p.flangerOn       = params.flangerOn->load() > 0.5f;
     p.flangerRate     = params.flangerRate->load();
     p.flangerDepth    = params.flangerDepth->load();
@@ -515,7 +532,7 @@ juce::String EffectSuiteProcessor::getImpulseResponseName() const
 const juce::StringArray& EffectSuiteProcessor::getAllPedalIds()
 {
     static const juce::StringArray ids { "gate", "wah", "comp", "oct", "phaser", "od", "dist", "fuzz",
-                                         "eq", "flanger", "chorus", "trem", "delay", "reverb" };
+                                         "eq", "flanger", "chorus", "trem", "delay", "reverb", "looper" };
     return ids;
 }
 
@@ -808,13 +825,40 @@ namespace
             { "Bajo: Redondo a válvulas", "comp",
               { { "ampModel", 6 }, { "ampGain", 0.50f }, { "cabModel", 3 }, { "compSustain", 0.45f } } },
             { "Bajo: Limpio moderno", "comp,eq",
-              { { "ampModel", 7 }, { "ampGain", 0.50f }, { "ampMaster", 0.45f }, { "cabModel", 4 }, { "compSustain", 0.50f }, { "eqLow", 2.0f }, { "eqLowMid", -3.0f }, { "eqHigh", 3.0f } } },
+              { { "ampModel", 7 }, { "ampGain", 0.50f }, { "ampMaster", 0.45f }, { "cabModel", 4 }, { "compSustain", 0.50f }, { "eq100", 2.0f }, { "eq400", -3.0f }, { "eq3k2", 3.0f } } },
             { "Bajo: Rock", "comp,od",
               { { "ampModel", 8 }, { "ampGain", 0.50f }, { "cabModel", 3 }, { "odModel", 3 }, { "odDrive", 0.40f } } },
             { "Bajo: Fuzz", "fuzz",
               { { "ampModel", 6 }, { "ampGain", 0.40f }, { "cabModel", 3 }, { "fuzzModel", 2 }, { "fuzzAmount", 0.60f } } },
             { "Bajo: Sub octava", "comp,oct,chorus",
               { { "ampModel", 7 }, { "ampGain", 0.50f }, { "ampMaster", 0.42f }, { "cabModel", 3 }, { "octSub", 0.50f }, { "octDry", 0.70f }, { "chorusMix", 0.35f } } },
+
+            // Añadidos con la segunda tanda de modelos. Amplis: 9 Plexi, 10 Thick Crunch, 11 Jazz Clean, 12 Rectified,
+            // 13 Brit Clean 100, 14 Bass Studio, 15 Bass DI. Overdrive: 4 Asym Drive, 5 Treble Boost.
+            // Distorsión: 4 Orange, 5 Swedish, 6 Bass Modern. Fuzz: 3 Big Fuzz.
+            { "Guitarra: Plexi clásico", "od,delay",
+              { { "ampModel", 9 }, { "ampGain", 0.60f }, { "cabModel", 0 }, { "odModel", 5 }, { "odDrive", 0.45f }, { "delayModel", 1 }, { "delayTime", 320.0f }, { "delayMix", 0.18f } } },
+            { "Guitarra: Surf con muelles", "trem,reverb",
+              { { "ampModel", 0 }, { "ampGain", 0.50f }, { "ampMaster", 0.55f }, { "ampTreble", 0.65f }, { "cabModel", 1 }, { "reverbModel", 1 }, { "reverbSize", 0.60f }, { "reverbMix", 0.35f },
+                { "tremRate", 0.55f }, { "tremDepth", 0.40f } } },
+            { "Guitarra: Limpio jazz", "comp,chorus",
+              { { "ampModel", 11 }, { "ampGain", 0.50f }, { "ampTreble", 0.45f }, { "cabModel", 1 }, { "compSustain", 0.35f }, { "chorusMix", 0.55f }, { "chorusDepth", 0.45f } } },
+            { "Guitarra: Muro de fuzz", "fuzz,reverb",
+              { { "ampModel", 13 }, { "ampGain", 0.45f }, { "cabModel", 0 }, { "fuzzModel", 3 }, { "fuzzAmount", 0.70f }, { "fuzzTone", 0.45f }, { "fuzzLevel", 0.30f }, { "reverbMix", 0.15f } } },
+            { "Guitarra: Stoner", "gate,fuzz",
+              { { "ampModel", 10 }, { "ampGain", 0.55f }, { "ampBass", 0.65f }, { "cabModel", 0 }, { "fuzzModel", 3 }, { "fuzzAmount", 0.45f }, { "fuzzLevel", 0.30f } } },
+            { "Guitarra: Metal sueco", "gate,dist",
+              { { "ampModel", 1 }, { "ampGain", 0.35f }, { "cabModel", 0 }, { "gateThreshold", -52.0f }, { "distModel", 5 }, { "distGain", 0.90f }, { "distTone", 0.85f }, { "distLevel", 0.45f } } },
+            { "Guitarra: Rectificado", "gate,od",
+              { { "ampModel", 12 }, { "ampGain", 0.65f }, { "ampMid", 0.35f }, { "ampMaster", 0.62f }, { "cabModel", 0 }, { "gateThreshold", -55.0f }, { "odModel", 4 }, { "odDrive", 0.15f }, { "odLevel", 0.75f } } },
+            { "Guitarra: Distorsión naranja", "dist,eq",
+              { { "ampModel", 0 }, { "ampGain", 0.40f }, { "ampMaster", 0.60f }, { "cabModel", 0 }, { "distModel", 4 }, { "distGain", 0.60f }, { "distTone", 0.45f }, { "distLevel", 0.38f }, { "eq400", 2.0f }, { "eq3k2", -2.0f } } },
+            { "Bajo: Estudio", "comp",
+              { { "ampModel", 14 }, { "ampGain", 0.50f }, { "ampMaster", 0.40f }, { "cabModel", 4 }, { "compSustain", 0.40f } } },
+            { "Bajo: Directo con gruñido", "comp",
+              { { "ampModel", 15 }, { "ampGain", 0.60f }, { "ampPresence", 0.65f }, { "cabModel", 3 }, { "compSustain", 0.45f } } },
+            { "Bajo: Moderno agresivo", "comp,dist,eq",
+              { { "ampModel", 7 }, { "ampGain", 0.50f }, { "ampMaster", 0.45f }, { "cabModel", 3 }, { "distModel", 6 }, { "distGain", 0.65f }, { "distTone", 0.60f }, { "distLevel", 0.40f }, { "eq100", 2.0f }, { "eq400", -2.5f } } },
         };
         return presets;
     }

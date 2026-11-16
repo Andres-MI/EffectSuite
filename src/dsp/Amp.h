@@ -22,6 +22,7 @@ struct AmpVoicing
     double powerDrive;
     double sag;
     double outputTrim;
+    bool bass = false;         // pensado para bajo
 };
 
 namespace voicings
@@ -65,25 +66,76 @@ namespace voicings
     inline constexpr AmpVoicing bassTube {
         "Bass Tube", 3,
         { 1.2, 6.0, 2.5, 0 }, { 0.20, 0.25, 0.10, 0 }, { 12.0, 12.0, 10.0, 0 }, { 9000.0, 7000.0, 7000.0, 0 },
-        0, tonestacks::bass, 6.0, 18.0, 0.03, 1.6, 0.25, 0.555
+        0, tonestacks::bass, 6.0, 18.0, 0.03, 1.6, 0.25, 0.555, true
     };
 
     inline constexpr AmpVoicing bassClean {
         "Bass Clean", 2,
         { 0.6, 3.0, 0, 0 }, { 0.05, 0.05, 0, 0 }, { 10.0, 10.0, 0, 0 }, { 16000.0, 14000.0, 0, 0 },
-        0, tonestacks::bass, 6.0, 15.0, 0.08, 1.0, 0.0, 4.2
+        0, tonestacks::bass, 6.0, 15.0, 0.08, 1.0, 0.0, 4.2, true
     };
 
     inline constexpr AmpVoicing bassRock {
         "Bass Rock", 3,
         { 1.5, 20.0, 3.0, 0 }, { 0.30, 0.35, 0.15, 0 }, { 25.0, 20.0, 12.0, 0 }, { 8000.0, 6000.0, 6500.0, 0 },
-        2, tonestacks::bass, 6.0, 25.0, 0.01, 2.0, 0.25, 0.255
+        2, tonestacks::bass, 6.0, 25.0, 0.01, 2.0, 0.25, 0.255, true
+    };
+
+    // Plexi: menos ganancia y más holgado que el British Crunch, con la etapa de potencia trabajando más
+    inline constexpr AmpVoicing plexi {
+        "Plexi", 3,
+        { 1.5, 12.0, 2.5, 0 }, { 0.30, 0.30, 0.10, 0 }, { 60.0, 30.0, 20.0, 0 }, { 13000.0, 10000.0, 11000.0, 0 },
+        2, tonestacks::british, 4.0, 40.0, 0.02, 2.6, 0.30, 0.275
+    };
+
+    // Crunch grueso: muchos graves y medios, agudos suaves
+    inline constexpr AmpVoicing thickCrunch {
+        "Thick Crunch", 3,
+        { 1.8, 26.0, 4.0, 0 }, { 0.35, 0.40, 0.15, 0 }, { 45.0, 30.0, 20.0, 0 }, { 8000.0, 6000.0, 7000.0, 0 },
+        2, tonestacks::thick, 4.5, 35.0, 0.01, 2.2, 0.28, 0.208
+    };
+
+    // Limpio de transistores: casi sin saturación y con mucha pegada
+    inline constexpr AmpVoicing jazzClean {
+        "Jazz Clean", 2,
+        { 0.5, 5.0, 0, 0 }, { 0.03, 0.03, 0, 0 }, { 25.0, 25.0, 0, 0 }, { 18000.0, 16000.0, 0, 0 },
+        0, tonestacks::american, 7.0, 30.0, 0.08, 0.8, 0.0, 4.4
+    };
+
+    // Alta ganancia rectificada: graves enormes, medios vaciados y mucho sag
+    inline constexpr AmpVoicing rectified {
+        "Rectified", 4,
+        { 1.5, 55.0, 18.0, 5.0 }, { 0.30, 0.40, 0.35, 0.20 }, { 150.0, 70.0, 40.0, 25.0 }, { 9000.0, 7000.0, 6500.0, 8000.0 },
+        3, tonestacks::rectified, 4.5, 60.0, 0.002, 1.6, 0.35, 0.185
+    };
+
+    // Limpio británico de 100 W: muy rígido, con mucho margen antes de romper
+    inline constexpr AmpVoicing britClean {
+        "Brit Clean 100", 3,
+        { 1.2, 7.0, 2.0, 0 }, { 0.20, 0.20, 0.10, 0 }, { 30.0, 25.0, 20.0, 0 }, { 15000.0, 12000.0, 12000.0, 0 },
+        2, tonestacks::flatClean, 3.5, 30.0, 0.03, 1.2, 0.08, 0.8
+    };
+
+    // Ampli de bajo de estudio: cálido, redondo y con compresión suave
+    inline constexpr AmpVoicing bassStudio {
+        "Bass Studio", 2,
+        { 1.2, 6.0, 0, 0 }, { 0.25, 0.25, 0, 0 }, { 12.0, 12.0, 0, 0 }, { 6000.0, 5000.0, 0, 0 },
+        0, tonestacks::bass, 6.0, 20.0, 0.04, 1.8, 0.35, 0.95, true
+    };
+
+    // Previo de bajo con saturación y caja directa: gruñido en medios agudos y graves firmes
+    inline constexpr AmpVoicing bassDirect {
+        "Bass DI", 3,
+        { 1.5, 14.0, 3.0, 0 }, { 0.30, 0.30, 0.15, 0 }, { 20.0, 60.0, 15.0, 0 }, { 9000.0, 7000.0, 8000.0, 0 },
+        2, tonestacks::bass, 6.0, 20.0, 0.02, 1.4, 0.10, 0.29, true
     };
 
     // El orden es el del parámetro guardado en los presets: añadir siempre al final.
     inline constexpr const AmpVoicing* all[] { &cleanAmerican, &britishCrunch, &highGain, &tweed, &classAChime,
-                                               &modernLead, &bassTube, &bassClean, &bassRock };
-    inline constexpr int count = 9;
+                                               &modernLead, &bassTube, &bassClean, &bassRock,
+                                               &plexi, &thickCrunch, &jazzClean, &rectified, &britClean,
+                                               &bassStudio, &bassDirect };
+    inline constexpr int count = 16;
 }
 
 /** Amplificador de válvulas: previo multietapa, control de tonos de circuito y etapa de potencia con sag. */
