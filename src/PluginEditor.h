@@ -12,7 +12,6 @@ public:
     ~EffectSuiteEditor() override;
 
     void paint (juce::Graphics&) override;
-    void paintOverChildren (juce::Graphics&) override;
     void resized() override;
 
 private:
@@ -52,6 +51,7 @@ private:
     {
         juce::Slider slider;
         juce::Label label;
+        juce::String fullText;                        // label text at normal size
         std::unique_ptr<SliderAttachment> attachment; // last: destroyed first
     };
 
@@ -79,6 +79,19 @@ private:
         void paintButton (juce::Graphics&, bool highlighted, bool down) override;
     };
 
+    /** Button of the recording strip: record / stop, reveal folder, play last take. Icon, plus text when it fits. */
+    class StripButton final : public juce::Button
+    {
+    public:
+        enum class Kind { record, folder, listen };
+        explicit StripButton (Kind k) : juce::Button ({}), kind (k) { setMouseCursor (juce::MouseCursor::PointingHandCursor); }
+        void paintButton (juce::Graphics&, bool highlighted, bool down) override;
+
+        Kind kind;
+        bool showText = true, active = false;
+        juce::String text, activeText;
+    };
+
     /** Dashed tile at the end of a pedal row that opens the "add pedal" menu. */
     class AddTile final : public juce::Component
     {
@@ -104,6 +117,7 @@ private:
         void paint (juce::Graphics&) override;
         void paintOverChildren (juce::Graphics&) override;
         void resized() override;
+        juce::MouseCursor getMouseCursor() override;
         void mouseDown (const juce::MouseEvent&) override;
         void mouseDrag (const juce::MouseEvent&) override;
         void mouseUp (const juce::MouseEvent&) override;
@@ -234,6 +248,10 @@ private:
     void showAddMenu (bool preRow, juce::Component& target);
     void updateTuner();
     float uiScale() const { return (float) getHeight() / (float) baseHeight; }
+    void layoutPedalRow (bool post, bool animate);
+    void storeEditorWidth();
+    void toggleRecording();
+    void updateRecordingUi (bool force);
 
     // Pedal drag and drop (driven by the Stompbox mouse handlers)
     Stompbox* findPedal (const juce::String& id) const;
@@ -251,9 +269,15 @@ private:
     void askDeletePreset();
 
     static constexpr int baseWidth = 1320, baseHeight = 936;
+    static constexpr int minWidth = 726, minHeight = 515;      // about 55 % of the default
+    static constexpr int maxWidth = 1980, maxHeight = 1404;
 
     EffectSuiteProcessor& processor;
     RigLookAndFeel lnf;
+    juce::TooltipWindow tooltipWindow { this };
+    juce::ComponentAnimator animator;
+    bool sizeRestored = false;
+    float rowX0[2] {}, rowStep[2] {};      // slot geometry of the pre/post rows, for drag targets
 
     // Top bar
     std::unique_ptr<Knob> inputGain, outputLevel;
@@ -276,6 +300,15 @@ private:
     juce::Label presetLabel;
     juce::ComboBox presetBox;
     juce::TextButton saveButton { "Guardar" }, deleteButton { "Borrar" };
+    StripButton recordButton { StripButton::Kind::record }, folderButton { StripButton::Kind::folder },
+                listenButton { StripButton::Kind::listen };
+    juce::Label recordTime;
+    juce::ToggleButton metroToggle;
+    juce::Slider metroBpm, metroLevel;
+    std::unique_ptr<ButtonAttachment> metroToggleA;       // after the components they reference
+    std::unique_ptr<SliderAttachment> metroBpmA, metroLevelA;
+    bool lastRecording = false, lastTakeExists = false;
+    int stripSepA = -1, stripSepB = -1;
     juce::StringArray factoryNames, userNames;
     juce::String shownPresetName;
     bool presetIsUser = false;
@@ -283,7 +316,6 @@ private:
     // Drag state
     Stompbox* draggedPedal = nullptr;
     int dragTargetIndex = -1, dragGrabX = 0;
-    juce::Rectangle<int> dropMarker;
 
     juce::Rectangle<int> topBar, presetBar, tunerArea, preBoard, ampBoard, postBoard;
 

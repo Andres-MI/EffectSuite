@@ -13,12 +13,13 @@ EffectSuite es un simulador de pedales y amplificadores para guitarra y bajo. Fu
 7. [Amplificadores y pantallas](#7-amplificadores-y-pantallas)
 8. [Capturas neuronales (.nam)](#8-capturas-neuronales-nam)
 9. [Afinador](#9-afinador)
-10. [Rendimiento y latencia](#10-rendimiento-y-latencia)
-11. [MIDI](#11-midi)
-12. [Uso como plugin en un DAW](#12-uso-como-plugin-en-un-daw)
-13. [Solución de problemas](#13-solución-de-problemas)
-14. [Limitaciones conocidas](#14-limitaciones-conocidas)
-15. [Licencia](#15-licencia)
+10. [Grabar tomas y metrónomo](#10-grabar-tomas-y-metrónomo)
+11. [Rendimiento y latencia](#11-rendimiento-y-latencia)
+12. [MIDI](#12-midi)
+13. [Uso como plugin en un DAW](#13-uso-como-plugin-en-un-daw)
+14. [Solución de problemas](#14-solución-de-problemas)
+15. [Limitaciones conocidas](#15-limitaciones-conocidas)
+16. [Licencia](#16-licencia)
 
 ---
 
@@ -36,7 +37,7 @@ Incluye 14 pedales, 9 amplificadores (6 de guitarra y 3 de bajo), 5 pantallas, c
 
 - Un ordenador con **Windows 10/11** o **macOS 10.15 o posterior** (Intel y Apple Silicon).
 - Una **interfaz de audio con entrada de instrumento** (Hi-Z). Enchufar la guitarra directamente a la entrada de línea o de micrófono de un ordenador suele dar una señal débil y con ruido.
-- **Auriculares o monitores** de estudio. Con altavoces abiertos y un micrófono cerca puedes provocar acoples (ver [sección 13](#13-solución-de-problemas)).
+- **Auriculares o monitores** de estudio. Con altavoces abiertos y un micrófono cerca puedes provocar acoples (ver [sección 14](#14-solución-de-problemas)).
 - Un cable de instrumento y tu guitarra o bajo.
 
 Para usarlo como plugin necesitas además un DAW compatible con VST3 o, en macOS, con AU.
@@ -58,14 +59,14 @@ Cada versión se compila automáticamente. En la página del repositorio entra e
 
 ### Windows
 
-1. Descarga `EffectSuite-Setup.exe` y ábrelo.
+1. Descomprime `EffectSuite-Windows` y abre `EffectSuite-Setup.exe`.
 2. Windows SmartScreen mostrará un aviso de que protegió tu equipo, porque el programa no está firmado. Pulsa **Más información** y después **Ejecutar de todas formas**.
 3. Sigue los pasos del instalador.
-4. Abre EffectSuite para usar la aplicación independiente. Si usas un DAW, vuelve a escanear los plugins para que aparezca el VST3.
+4. Abre EffectSuite desde el menú Inicio (o desde el icono del escritorio, si lo marcaste) para usar la aplicación independiente. Si usas un DAW, vuelve a escanear los plugins para que aparezca el VST3.
 
 ### macOS
 
-1. Descarga `EffectSuite.pkg`.
+1. Descomprime `EffectSuite-macOS` y localiza `EffectSuite.pkg`.
 2. No lo abras con doble clic. Haz **clic derecho** (o Control + clic) sobre el archivo y elige **Abrir**. Confirma en el cuadro que aparece.
 3. Sigue los pasos del instalador.
 4. Abre EffectSuite desde la carpeta Aplicaciones. Si usas un DAW, vuelve a escanear los plugins.
@@ -77,14 +78,14 @@ Los plugins quedan en las carpetas estándar de cada sistema. Si algún día tie
 | Formato | Ruta |
 |---|---|
 | VST3, Windows | `C:\Program Files\Common Files\VST3` |
-| VST3, macOS | `~/Library/Audio/Plug-Ins/VST3` |
-| AU, macOS | `~/Library/Audio/Plug-Ins/Components` |
+| VST3, macOS | `/Library/Audio/Plug-Ins/VST3` |
+| AU, macOS | `/Library/Audio/Plug-Ins/Components` |
 
 ---
 
 ## 3. Primer arranque y ajustes de audio
 
-Esta sección es para la aplicación independiente. Si usas el plugin en un DAW, los ajustes de audio los controla el DAW; salta a la [sección 4](#4-la-interfaz) y a la [sección 12](#12-uso-como-plugin-en-un-daw).
+Esta sección es para la aplicación independiente. Si usas el plugin en un DAW, los ajustes de audio los controla el DAW; salta a la [sección 4](#4-la-interfaz) y a la [sección 13](#13-uso-como-plugin-en-un-daw).
 
 La ventana se ajusta sola al tamaño de tu pantalla al abrirse. Puedes cambiar su tamaño arrastrando la esquina inferior derecha, y el programa recuerda el tamaño que dejes.
 
@@ -153,7 +154,7 @@ De izquierda a derecha:
 | **Canal** | Entrada de la interfaz que se usa (ver 3.4). |
 | Afinador | Pantalla con la nota, una escala de cents y la frecuencia en Hz (ver [sección 9](#9-afinador)). |
 | **Silenciar** | Interruptor que silencia la salida mientras afinas. |
-| **Calidad** | Sobremuestreo: Mínimo (1x), Eco (2x), Normal (4x) o Alta (8x). Ver [sección 10](#10-rendimiento-y-latencia). |
+| **Calidad** | Sobremuestreo: Mínimo (1x), Eco (2x), Normal (4x) o Alta (8x). Ver [sección 11](#11-rendimiento-y-latencia). |
 | **Salida** (mando) y su medidor | Nivel de salida, de -24 a +12 dB. |
 
 Los mandos se mueven arrastrando con el ratón.
@@ -162,7 +163,7 @@ En la aplicación independiente, encima de la cabecera hay una barra con el bot�
 
 ### 4.2 Barra de presets
 
-Contiene la etiqueta **Preset**, un desplegable (muestra *Sin preset* hasta que eliges uno), los botones **Guardar** y **Borrar**, y a la derecha el indicador **CPU**. Todo sobre presets está en la [sección 5](#5-presets) y sobre el indicador de CPU, en la [sección 10](#10-rendimiento-y-latencia).
+Contiene la etiqueta **Preset**, un desplegable (muestra *Sin preset* hasta que eliges uno), los botones **Guardar** y **Borrar**, y a la derecha el indicador **CPU**. Todo sobre presets está en la [sección 5](#5-presets) y sobre el indicador de CPU, en la [sección 11](#11-rendimiento-y-latencia).
 
 ### 4.3 Tira de señal
 
@@ -323,7 +324,7 @@ Filtro de paso de banda resonante que barre de 350 Hz a 2,2 kHz.
 | **Position** | En Manual: posición del pedal (talón a punta). En Auto: sensibilidad al ataque. |
 | **Resonance** | Cuánto se estrecha y destaca el pico del filtro. |
 
-Consejo: para usarlo como un pedal real, ponlo en Manual y controla **Position** con un pedal de expresión MIDI (ver [sección 11](#11-midi)). En Auto, toca con dinámica: las notas fuertes abren más el filtro.
+Consejo: para usarlo como un pedal real, ponlo en Manual y controla **Position** con un pedal de expresión MIDI (ver [sección 12](#12-midi)). En Auto, toca con dinámica: las notas fuertes abren más el filtro.
 
 #### Compresor
 
@@ -346,7 +347,7 @@ Añade una octava por debajo de la nota que tocas.
 | **Sub** | Volumen de la octava inferior. |
 | **Dry** | Volumen de la señal original. |
 
-Consejo: toca notas sueltas y limpias, sobre todo en las cuerdas graves. Es **monofónico**: con acordes o dos notas a la vez no funciona bien (ver [sección 14](#14-limitaciones-conocidas)).
+Consejo: toca notas sueltas y limpias, sobre todo en las cuerdas graves. Es **monofónico**: con acordes o dos notas a la vez no funciona bien (ver [sección 15](#15-limitaciones-conocidas)).
 
 #### Phaser
 
@@ -398,7 +399,7 @@ Recorte duro: mucha ganancia seguida de diodos. Cuatro modelos.
 | **Metal** | Muy alta ganancia, con los medios vaciados (una bajada alrededor de 700 Hz) y más volumen de salida. |
 | **Bass Distortion** | **Pensado para bajo.** Mantiene limpios los graves (por debajo de unos 120 Hz) y distorsiona el resto. |
 
-Consejo: con distorsiones fuertes pon delante la Puerta y, si te sobran recursos, sube **Calidad** para reducir el aliasing (ver [sección 10](#10-rendimiento-y-latencia)).
+Consejo: con distorsiones fuertes pon delante la Puerta y, si te sobran recursos, sube **Calidad** para reducir el aliasing (ver [sección 11](#11-rendimiento-y-latencia)).
 
 #### Fuzz
 
@@ -562,7 +563,7 @@ Notas:
 - La IR se procesa sin añadir latencia.
 - Se usa una sola respuesta, en mono.
 - El volumen de la IR se normaliza al cargarla.
-- Si el nombre del archivo no aparece tras elegirlo, no se ha cargado: prueba con otro archivo (ver [sección 13](#13-solución-de-problemas)).
+- Si el nombre del archivo no aparece tras elegirlo, no se ha cargado: prueba con otro archivo (ver [sección 14](#14-solución-de-problemas)).
 - La IR se guarda en los presets por su ruta (ver 5.5).
 
 ---
@@ -610,7 +611,7 @@ Las capturas son lo que más CPU consume de EffectSuite. En equipos justos:
 - Prefiere los amplis modelados de EffectSuite, o
 - busca capturas ligeras (las marcadas como "nano" o "feather" en TONE3000).
 
-Vigila el indicador **CPU** (ver [sección 10](#10-rendimiento-y-latencia)).
+Vigila el indicador **CPU** (ver [sección 11](#11-rendimiento-y-latencia)).
 
 La captura cargada se guarda en los presets por su ruta (ver 5.5).
 
@@ -643,9 +644,43 @@ El interruptor **Silenciar** es un ajuste de tu equipo: los presets no lo cambia
 
 ---
 
-## 10. Rendimiento y latencia
+## 10. Grabar tomas y metrónomo
 
-### 10.1 El selector Calidad
+EffectSuite puede grabar lo que tocas sin necesidad de un DAW. Los controles están en la barra de presets, a la derecha.
+
+### 10.1 Grabar una toma
+
+1. Prepara el sonido y comprueba en el medidor de salida que no llega al rojo.
+2. Pulsa **Grabar**. El contador empieza a correr.
+3. Toca.
+4. Pulsa **Parar**.
+
+Cada toma se guarda como dos archivos WAV de 24 bits, a la frecuencia de muestreo de tu interfaz:
+
+| Archivo | Contenido | Para qué sirve |
+|---|---|---|
+| `fecha hora toma.wav` | El sonido procesado, en estéreo, tal como lo oyes | Es la pista terminada |
+| `fecha hora toma DI.wav` | La guitarra o el bajo sin procesar, en mono | Permite volver a pasar la misma interpretación por otro ampli o por otros pedales más adelante |
+
+Los archivos quedan en `Documentos/EffectSuite/Grabaciones`. El botón **Carpeta** la abre, y **Escuchar** reproduce la última toma con el reproductor del sistema.
+
+El archivo limpio se graba antes de la ganancia de entrada de EffectSuite: es exactamente lo que entrega tu interfaz.
+
+### 10.2 Metrónomo
+
+Activa **Metrónomo** y ajusta el tempo (de 40 a 240 pulsos por minuto) y su volumen. El primer golpe de cada cuatro suena más agudo.
+
+El metrónomo se oye por la salida pero no queda grabado en ninguno de los dos archivos, así que puedes grabar con él puesto.
+
+### 10.3 Qué no hace
+
+No es un multipista: no reproduce tomas anteriores mientras grabas una nueva ni mezcla varias pistas. Para eso hace falta un DAW (Reaper es económico y ligero), donde EffectSuite se usa como plugin y los archivos grabados aquí se pueden importar.
+
+---
+
+## 11. Rendimiento y latencia
+
+### 11.1 El selector Calidad
 
 Los pedales de antes del ampli y el amplificador trabajan **sobremuestreados**: el audio se procesa a una frecuencia mayor para que las distorsiones fuertes no generen un tipo de ruido llamado *aliasing*. El selector **Calidad** de la cabecera fija ese factor:
 
@@ -662,7 +697,7 @@ A frecuencias de muestreo muy altas el programa reduce por su cuenta el factor, 
 
 La **Calidad** es un ajuste de tu equipo: los presets no la cambian.
 
-### 10.2 El indicador CPU y los cortes
+### 11.2 El indicador CPU y los cortes
 
 A la derecha de la barra de presets verás `CPU nn %`, la carga del procesado de audio, y un contador de **cortes** (`n cortes`) cuando el audio se ha interrumpido porque el equipo no llegó a tiempo.
 
@@ -674,7 +709,7 @@ A la derecha de la barra de presets verás `CPU nn %`, la carga del procesado de
 
 Si el indicador se acerca al 100 %, baja la calidad, quita pedales o sube el tamaño de búfer.
 
-### 10.3 Consejos para equipos poco potentes
+### 11.3 Consejos para equipos poco potentes
 
 1. Baja **Calidad** a Eco o Mínimo.
 2. Si usas una captura `.nam`, prueba con una más ligera o con un ampli modelado.
@@ -683,7 +718,7 @@ Si el indicador se acerca al 100 %, baja la calidad, quita pedales o sube el tam
 5. Cierra otros programas, sobre todo navegadores y programas de vídeo.
 6. Usa un driver de baja latencia (ASIO en Windows).
 
-### 10.4 Qué determina la latencia
+### 11.4 Qué determina la latencia
 
 - **Driver y tamaño de búfer** de tu interfaz: es la parte mayor. A 48 kHz, un búfer de 64 muestras son unos 1,3 ms y uno de 128 muestras, unos 2,7 ms (por cada sentido, entrada y salida).
 - **Calidad**: el procesado de EffectSuite añade solo unas pocas muestras (del orden de 0,1 ms). **Mínimo (1x)** no añade ninguna.
@@ -693,7 +728,7 @@ Si notas retardo, lo primero que debes tocar es el búfer y el driver.
 
 ---
 
-## 11. MIDI
+## 12. MIDI
 
 EffectSuite responde a dos tipos de mensajes MIDI.
 
@@ -718,7 +753,7 @@ Si usas el plugin en un DAW, el DAW debe enviarle los mensajes MIDI. El mando **
 
 ---
 
-## 12. Uso como plugin en un DAW
+## 13. Uso como plugin en un DAW
 
 1. Instala el plugin con el instalador (ver [sección 2](#2-instalación)).
 2. Abre tu DAW y vuelve a escanear los plugins si no aparece EffectSuite.
@@ -734,7 +769,7 @@ Cosas a tener en cuenta:
 
 ---
 
-## 13. Solución de problemas
+## 14. Solución de problemas
 
 ### No suena nada
 
@@ -789,11 +824,11 @@ Si macOS dice que no puede abrir el paquete, no lo abras con doble clic: haz **c
 
 ### El wah no responde a mi pedal
 
-Comprueba que el wah está **encendido**, en modo **Manual**, y que tu dispositivo MIDI está elegido en *Options → Audio/MIDI Settings*. El pedal debe enviar Control Change 11 o 4 (ver [sección 11](#11-midi)).
+Comprueba que el wah está **encendido**, en modo **Manual**, y que tu dispositivo MIDI está elegido en *Options → Audio/MIDI Settings*. El pedal debe enviar Control Change 11 o 4 (ver [sección 12](#12-midi)).
 
 ---
 
-## 14. Limitaciones conocidas
+## 15. Limitaciones conocidas
 
 - **El octavador es monofónico.** Solo funciona bien con notas sueltas. Con acordes o varias cuerdas a la vez, el resultado no es fiable.
 - **Los pedales no pueden cruzar al otro lado del ampli.** Los ocho de antes (Puerta, Wah, Compresor, Octavador, Phaser, Overdrive, Distorsión, Fuzz) siempre van antes del ampli, y los seis de después (Ecualizador, Flanger, Chorus, Tremolo, Delay, Reverb) siempre después. Solo puedes reordenarlos dentro de su fila. Por la misma razón, no hay lazo de efectos con el ampli ni se puede poner, por ejemplo, un chorus antes del ampli.
@@ -806,7 +841,7 @@ Comprueba que el wah está **encendido**, en modo **Manual**, y que tu dispositi
 
 ---
 
-## 15. Licencia
+## 16. Licencia
 
 EffectSuite se distribuye bajo la licencia **AGPL-3.0**.
 
