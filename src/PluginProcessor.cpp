@@ -183,6 +183,10 @@ void EffectSuiteProcessor::prepareToPlay (double sampleRate, int samplesPerBlock
     pitchTracker.prepare (sampleRate);
     loadMeasurer.reset (sampleRate, samplesPerBlock);
 
+    // Si el audio cambia de frecuencia a mitad de toma, el archivo quedaría con la frecuencia equivocada
+    if (recorder.isRecording() && std::abs (recorder.getSampleRate() - sampleRate) > 0.5)
+        recorder.stop();
+
     const int quality = (int) params.quality->load() - 1;
     latencyQuality.store (quality);
     setLatencySamples (juce::roundToInt (chain.getLatencySamples (quality)));
@@ -309,7 +313,7 @@ void EffectSuiteProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     float* direct = work.getWritePointer (3);
     const bool metronome = params.metroOn->load() > 0.5f;
     const double samplesPerBeat = getSampleRate() * 60.0 / juce::jlimit (40.0, 240.0, (double) params.metroBpm->load());
-    const float clickGain = 0.6f * params.metroLevel->load() * params.metroLevel->load();
+    const float clickGain = 0.35f * params.metroLevel->load() * params.metroLevel->load();
     float inPeak = 0.0f, outPeak = 0.0f;
 
     for (int start = 0; start < numSamples; start += maxBlock)
@@ -351,8 +355,8 @@ void EffectSuiteProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
                 const float click = clickGain * clickEnvelope * (float) std::sin (clickAngle);
                 clickAngle += clickAngleStep;
                 clickEnvelope *= 0.9985f;
-                outL[i] += click;
-                outR[i] += click;
+                outL[i] = juce::jlimit (-1.0f, 1.0f, outL[i] + click);
+                outR[i] = juce::jlimit (-1.0f, 1.0f, outR[i] + click);
             }
         }
         else
@@ -381,6 +385,10 @@ void EffectSuiteProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         }
     }
 
+    // El medidor de entrada muestra el nivel que llega a los pedales, es decir, después de la ganancia de entrada
+    inPeak = std::isfinite (inPeak) ? inPeak * juce::Decibels::decibelsToGain (p.inputGainDb) : 1.0f;
+    if (! std::isfinite (outPeak)) outPeak = 1.0f;
+
     if (inPeak > inputPeak.load (std::memory_order_relaxed))   inputPeak.store (inPeak, std::memory_order_relaxed);
     if (outPeak > outputPeak.load (std::memory_order_relaxed)) outputPeak.store (outPeak, std::memory_order_relaxed);
 }
@@ -405,12 +413,36 @@ void EffectSuiteProcessor::stopRecording()
 
 void EffectSuiteProcessor::applyPendingMidi()
 {
-    if (midiWahPending.load())
-    {
+    // Primero se baja la marca y después se lee el valor: si llega otro mensaje entre medias,
+    // vuelve a subirla y se aplica en la siguiente pasada, en lugar de perderse
+    if (midiWahPending.exchange (false))
         if (auto* position = apvts.getParameter ("wahPosition"))
             position->setValueNotifyingHost (midiWah.load());
 
-        midiWahPending.store (false);
+    // Un pedal encendido desde fuera (automatización del host) tiene que aparecer en la pedalera
+    juce::uint32 onMask = 0;
+    const auto& ids = getAllPedalIds();
+
+    for (int i = 0; i < ids.size(); ++i)
+        if (apvts.getRawParameterValue (ids[i] + "On")->load() > 0.5f)
+            onMask |= 1u << i;
+
+    if (onMask != lastOnMask)
+    {
+        lastOnMask = onMask;
+        bool missing = false;
+        juce::StringArray stored;
+
+        {
+            const juce::ScopedLock lock (stateLock);
+            stored.addTokens (apvts.state.getProperty ("board", "gate,comp,od,chorus,delay,reverb").toString(), ",", "");
+        }
+
+        for (int i = 0; i < ids.size(); ++i)
+            missing = missing || ((onMask >> i) & 1u && ! stored.contains (ids[i]));
+
+        if (missing)
+            writeBoard (readBoard());
     }
 
     const int program = midiProgram.exchange (-1);
@@ -462,6 +494,7 @@ bool EffectSuiteProcessor::loadImpulseResponse (const juce::File& file)
 
     reader.reset();
     chain.loadImpulseResponse (file);
+    const juce::ScopedLock lock (stateLock);
     irFile = file;
     return true;
 }
@@ -469,11 +502,13 @@ bool EffectSuiteProcessor::loadImpulseResponse (const juce::File& file)
 void EffectSuiteProcessor::clearImpulseResponse()
 {
     chain.clearImpulseResponse();
+    const juce::ScopedLock lock (stateLock);
     irFile = juce::File();
 }
 
 juce::String EffectSuiteProcessor::getImpulseResponseName() const
 {
+    const juce::ScopedLock lock (stateLock);
     return irFile == juce::File() ? juce::String() : irFile.getFileName();
 }
 
@@ -487,6 +522,7 @@ const juce::StringArray& EffectSuiteProcessor::getAllPedalIds()
 juce::StringArray EffectSuiteProcessor::readBoard() const
 {
     juce::StringArray board;
+    const juce::ScopedLock lock (stateLock);
 
     if (apvts.state.hasProperty ("board"))
         board.addTokens (apvts.state.getProperty ("board").toString(), ",", "");
@@ -506,7 +542,11 @@ juce::StringArray EffectSuiteProcessor::readBoard() const
 
 void EffectSuiteProcessor::writeBoard (const juce::StringArray& board)
 {
-    apvts.state.setProperty ("board", board.joinIntoString (","), nullptr);
+    {
+        const juce::ScopedLock lock (stateLock);
+        apvts.state.setProperty ("board", board.joinIntoString (","), nullptr);
+    }
+
     updateOrder();
     ++boardRevision;
 }
@@ -599,6 +639,7 @@ juce::String EffectSuiteProcessor::loadNeuralModel (const juce::File& file)
     if (! result.ok)
         return juce::String::fromUTF8 (result.error.c_str());
 
+    const juce::ScopedLock lock (stateLock);
     namFile = file;
     namSampleRate = result.modelSampleRate;
     return {};
@@ -607,12 +648,14 @@ juce::String EffectSuiteProcessor::loadNeuralModel (const juce::File& file)
 void EffectSuiteProcessor::clearNeuralModel()
 {
     chain.clearNeuralModel();
+    const juce::ScopedLock lock (stateLock);
     namFile = juce::File();
     namSampleRate = 0.0;
 }
 
 juce::String EffectSuiteProcessor::getNeuralModelName() const
 {
+    const juce::ScopedLock lock (stateLock);
     return namFile == juce::File() ? juce::String() : namFile.getFileNameWithoutExtension();
 }
 
@@ -622,8 +665,23 @@ juce::String EffectSuiteProcessor::getNeuralModelNote() const
     return {};
 }
 
+int EffectSuiteProcessor::getEditorWidth() const
+{
+    const juce::ScopedLock lock (stateLock);
+    return (int) apvts.state.getProperty ("editorWidth", 0);
+}
+
+void EffectSuiteProcessor::setEditorWidth (int width)
+{
+    const juce::ScopedLock lock (stateLock);
+
+    if ((int) apvts.state.getProperty ("editorWidth", 0) != width)
+        apvts.state.setProperty ("editorWidth", width, nullptr);
+}
+
 void EffectSuiteProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
+    const juce::ScopedLock lock (stateLock);
     auto state = apvts.copyState();
     state.setProperty ("irFile", irFile.getFullPathName(), nullptr);
     state.setProperty ("namFile", namFile.getFullPathName(), nullptr);
@@ -681,7 +739,17 @@ void EffectSuiteProcessor::applyState (const juce::ValueTree& source, bool keepR
     const juce::String namPath = state.getProperty ("namFile").toString();
 
     resetSoundToDefaults();
-    apvts.replaceState (state);
+
+    {
+        const juce::ScopedLock lock (stateLock);
+        apvts.replaceState (state);
+    }
+
+    // Un valor no numérico en un estado dañado dejaría la cadena muda: se sustituye por el de fábrica
+    for (auto* parameter : getParameters())
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (parameter))
+            if (! std::isfinite (ranged->getValue()) || ! std::isfinite (ranged->convertFrom0to1 (ranged->getValue())))
+                ranged->setValueNotifyingHost (ranged->getDefaultValue());
 
     if (keepRigSettings)
         for (size_t i = 0; i < std::size (rigSettings); ++i)
@@ -782,7 +850,11 @@ bool EffectSuiteProcessor::loadFactoryPreset (const juce::String& name)
         for (auto& value : preset.values)
             setParameterValue (apvts, value.first, value.second);
 
-        apvts.state.setProperty ("preset", name, nullptr);
+        {
+            const juce::ScopedLock lock (stateLock);
+            apvts.state.setProperty ("preset", name, nullptr);
+        }
+
         writeBoard (board);
         return true;
     }
@@ -822,6 +894,7 @@ bool EffectSuiteProcessor::saveUserPreset (const juce::String& name)
     if (file == juce::File() || ! file.getParentDirectory().createDirectory())
         return false;
 
+    const juce::ScopedLock lock (stateLock);
     apvts.state.setProperty ("preset", file.getFileNameWithoutExtension(), nullptr);
     auto state = apvts.copyState();
     state.setProperty ("irFile", irFile.getFullPathName(), nullptr);
@@ -843,7 +916,8 @@ bool EffectSuiteProcessor::loadUserPreset (const juce::String& name)
     auto xml = juce::XmlDocument::parse (file);
     auto state = xml != nullptr ? juce::ValueTree::fromXml (*xml) : juce::ValueTree();
 
-    if (! state.isValid() || ! state.hasType (apvts.state.getType()))
+    // Un archivo sin ningún parámetro no es un preset: cargarlo solo borraría el sonido actual
+    if (! state.isValid() || ! state.hasType (apvts.state.getType()) || state.getNumChildren() == 0)
         return false;
 
     state.setProperty ("preset", file.getFileNameWithoutExtension(), nullptr);
@@ -859,6 +933,7 @@ bool EffectSuiteProcessor::deleteUserPreset (const juce::String& name)
 
 juce::String EffectSuiteProcessor::getCurrentPresetName() const
 {
+    const juce::ScopedLock lock (stateLock);
     return apvts.state.getProperty ("preset").toString();
 }
 

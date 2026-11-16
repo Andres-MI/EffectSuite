@@ -117,6 +117,20 @@ void testState()
     c.setStateInformation (nullptr, 0);
     check (render (c).finite, "un estado ilegible se ignora");
 
+    // Un parámetro no numérico en un estado dañado no deja el plugin mudo
+    {
+        EffectSuiteProcessor source, target;
+        auto tree = source.apvts.copyState();
+        for (auto child : tree)
+            if (child.getProperty ("id").toString() == "ampGain" || child.getProperty ("id").toString() == "outputLevel")
+                child.setProperty ("value", std::numeric_limits<float>::quiet_NaN(), nullptr);
+        juce::MemoryBlock nanBlock;
+        if (auto xml = tree.createXml()) juce::AudioProcessor::copyXmlToBinary (*xml, nanBlock);
+        target.setStateInformation (nanBlock.getData(), (int) nanBlock.getSize());
+        const auto out = render (target);
+        check (out.finite && out.rmsDb > -40.0 && std::isfinite (value (target, "ampGain")), "un valor no numérico en el estado se sustituye y el plugin sigue sonando");
+    }
+
     // Un IR o una captura que ya no existen caen a la pantalla y al ampli integrados
     EffectSuiteProcessor d;
     auto state = d.apvts.copyState();
@@ -152,6 +166,14 @@ void testBoard()
     plugin.movePedal ("eq", 1);
     check (plugin.getBoardRow (true) == juce::StringArray ({ "chorus", "eq", "delay", "reverb" }) && plugin.getBoardRow (false).size() == 3,
            "mover en una fila no altera la otra");
+
+    // Un pedal encendido desde fuera (automatización) aparece en la pedalera
+    EffectSuiteProcessor automated;
+    const int revision = automated.getBoardRevision();
+    set (automated, "phaserOn", 1);
+    automated.applyPendingMidi();       // lo que hace el temporizador
+    check (automated.getBoardRow (false).contains ("phaser") && automated.getBoardRevision() != revision,
+           "un pedal encendido por automatización aparece en la pedalera");
 
     // El orden cambia el sonido de verdad: compresor antes o después del overdrive
     EffectSuiteProcessor x, y;
@@ -230,6 +252,10 @@ void testPresets()
             same = same && std::abs (ranged->getValue() - b.apvts.getParameter (ranged->getParameterID())->getValue()) < 1e-6f;
     check (same && b.getBoardRow (false) == fresh.getBoardRow (false) && b.getBoardRow (true) == fresh.getBoardRow (true),
            "cargar un preset tras otro da lo mismo que cargarlo en limpio");
+
+    folder.getChildFile ("Vacio.espreset").replaceWithText ("<EffectSuite/>");
+    check (! b.loadUserPreset ("Vacio"), "un archivo de preset sin contenido se rechaza");
+    folder.getChildFile ("Vacio.espreset").deleteFile();
 
     check (b.deleteUserPreset (saved) && b.getUserPresetNames().isEmpty() && ! b.loadUserPreset (saved), "borrar un preset de usuario");
     folder.deleteRecursively();
@@ -371,6 +397,10 @@ void testRecording()
         check (dryError < 1e-4, "la guitarra limpia grabada es exactamente lo que entró");
         check (wetLevel > 0.01, "el sonido procesado grabado no está vacío");
         check (clickDifference > 0.05, "el metrónomo se oye pero no queda grabado en la toma");
+        double heardPeak = 0.0;
+        for (float v : heard) heardPeak = std::max (heardPeak, (double) std::abs (v));
+        check (heardPeak <= 1.0, "el metrónomo no saca la salida de 0 dBFS");
+        check (plugin.getRecordingDropoutSeconds() == 0.0, "la toma no tiene huecos");
     }
 
     // Dos tomas seguidas no se pisan

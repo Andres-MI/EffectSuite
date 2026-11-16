@@ -914,8 +914,9 @@ void EffectSuiteEditor::CabUnit::chooseImpulseResponse()
         if (safe == nullptr)
             return;
         const auto f = fc.getResult();
-        if (f != juce::File())
-            safe->editor.processor.loadImpulseResponse (f);
+        if (f != juce::File() && ! safe->editor.processor.loadImpulseResponse (f))
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "No se pudo cargar la IR",
+                                                    juce::String::fromUTF8 ("El archivo no es un audio WAV o AIFF válido."), {}, safe.getComponent());
         safe->updateIrState();
     });
 }
@@ -1269,7 +1270,7 @@ EffectSuiteEditor::EffectSuiteEditor (EffectSuiteProcessor& p)
     // Initial size: the remembered width (or the default), never larger than what fits the screen
     // with room left for the title bar and the standalone "audio input muted" banner
     int width = baseWidth;
-    if (const int saved = (int) processor.apvts.state.getProperty ("editorWidth", 0); saved > 0)
+    if (const int saved = processor.getEditorWidth(); saved > 0)
         width = saved;
 
     if (auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
@@ -2038,7 +2039,14 @@ void EffectSuiteEditor::resized()
 void EffectSuiteEditor::toggleRecording()
 {
     if (processor.isRecording())
+    {
         processor.stopRecording();
+
+        if (const double lost = processor.getRecordingDropoutSeconds(); lost > 0.0)
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, juce::String::fromUTF8 ("La toma tiene huecos"),
+                                                    juce::String::fromUTF8 ("El disco no pudo seguir el ritmo y faltan ")
+                                                        + juce::String (lost, 1) + juce::String::fromUTF8 (" s de la grabación. Repite la toma."), {}, this);
+    }
     else if (const auto error = processor.startRecording(); error.isNotEmpty())
         juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "No se pudo grabar",
                                                 error, {}, this);
@@ -2079,6 +2087,6 @@ void EffectSuiteEditor::updateRecordingUi (bool force)
 void EffectSuiteEditor::storeEditorWidth()
 {
     if (sizeRestored && getWidth() > 0
-        && (int) processor.apvts.state.getProperty ("editorWidth", 0) != getWidth())
-        processor.apvts.state.setProperty ("editorWidth", getWidth(), nullptr);
+        && processor.getEditorWidth() != getWidth())
+        processor.setEditorWidth (getWidth());
 }

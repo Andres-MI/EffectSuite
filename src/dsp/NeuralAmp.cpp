@@ -160,6 +160,10 @@ NeuralAmp::LoadResult NeuralAmp::load (const std::string& path)
         if (fresh->NumInputChannels() != 1 || fresh->NumOutputChannels() != 1)
             throw std::runtime_error ("solo se admiten capturas mono");
 
+        // Una frecuencia absurda en el archivo haría reservar búferes enormes al remuestrear
+        if (const double declared = fresh->GetExpectedSampleRate(); declared > 0.0 && (declared < 8000.0 || declared > 192000.0))
+            throw std::runtime_error ("la captura declara una frecuencia de muestreo no válida");
+
         result.modelSampleRate = fresh->GetExpectedSampleRate() > 0.0 ? fresh->GetExpectedSampleRate() : 48000.0;
         setup = setupFor (*fresh, rate, block);
     }

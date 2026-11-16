@@ -135,7 +135,7 @@ El mando **Entrada** de la cabecera sube o baja el nivel de lo que llega de tu i
 2. Mira el medidor de entrada. Sube **Entrada** hasta que los picos suban bien por el medidor sin llegar al tope.
 3. Si el medidor llega al máximo, baja **Entrada**. Si no ves apenas movimiento, sube la ganancia de la propia interfaz antes de subir **Entrada** al máximo.
 
-El mando **Salida** (de -24 a +12 dB) regula el volumen final. Su medidor es el de la derecha. Un limitador suave evita que la salida llegue a 0 dBFS, pero no sustituye a un buen ajuste de volumen.
+El mando **Salida** (de -24 a +12 dB) regula el volumen final. Su medidor es el de la derecha. Un limitador suave impide que la salida pase de 0 dBFS, pero no sustituye a un buen ajuste de volumen.
 
 ---
 
@@ -233,7 +233,7 @@ Si el preset no se puede cargar, aparece el aviso *No se pudo cargar el preset*.
 2. Pulsa **Guardar**.
 3. Escribe el nombre en el cuadro **Nombre del preset** y pulsa **Guardar** (o Intro). **Cancelar** cierra el cuadro sin guardar.
 
-Si el preset que tienes cargado ya es uno tuyo, el cuadro te propone su nombre. Si guardas con un nombre que ya existe, ese archivo se sustituye. Los caracteres que no sean válidos en un nombre de archivo se cambian.
+Si el preset que tienes cargado ya es uno tuyo, el cuadro te propone su nombre. Si guardas con un nombre que ya existe, ese archivo se sustituye. Los caracteres que no sean válidos en un nombre de archivo se eliminan.
 
 Si falla, aparece *No se pudo guardar el preset*.
 
@@ -638,7 +638,7 @@ El afinador es cromático y puede detectar notas graves, hasta el Si grave de un
 
 Silenciar no corta el afinador, solo lo que oyes.
 
-Para afinar bien, toca una sola cuerda cada vez y deja que suene. El afinador lee la señal de tu entrada, así que no depende de los pedales que tengas puestos. Si ves `--`, sube el volumen de **Entrada** o toca más fuerte.
+Para afinar bien, toca una sola cuerda cada vez y deja que suene. El afinador lee la señal de tu entrada, así que no depende de los pedales que tengas puestos. Si ves `--`, sube el volumen del instrumento o la ganancia de tu interfaz de audio (el mando **Entrada** no afecta al afinador), o toca más fuerte.
 
 El interruptor **Silenciar** es un ajuste de tu equipo: los presets no lo cambian.
 

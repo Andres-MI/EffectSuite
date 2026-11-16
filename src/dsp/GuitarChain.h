@@ -399,10 +399,20 @@ public:
         // --- Captura neuronal en lugar del ampli modelado
         if (neuralFade.active())
         {
+            neuralDrain = (int) (0.5 * fs);
             float* wet = scratchA.data();
             for (int i = 0; i < numSamples; ++i) wet[i] = data[i] * neuralIn.getNextValue();
             neural.process (wet, numSamples);
             for (int i = 0; i < numSamples; ++i) data[i] += neuralFade.next() * (wet[i] * neuralOut.getNextValue() - data[i]);
+        }
+
+        else if (neuralDrain > 0 && applied.neural)
+        {
+            // Recién apagada: se le pasa medio segundo de silencio para que no guarde la última nota
+            // y la suelte al volver a encenderla (reiniciar la red aquí reservaría memoria)
+            std::fill (scratchA.begin(), scratchA.begin() + numSamples, 0.0f);
+            neural.process (scratchA.data(), numSamples);
+            neuralDrain -= numSamples;
         }
 
         // --- Pantalla
@@ -605,6 +615,7 @@ private:
     Fade gateFade, wahFade, compFade, octFade, phaserFade, odFade, distFade, fuzzFade, ampFade, neuralFade,
          cabFade, eqFade, flangerFade, chorusFade, tremFade, delayFade, reverbFade, muteFade;
     std::vector<float> scratchA, scratchB;
+    int neuralDrain = 0;
 
     std::array<std::unique_ptr<juce::dsp::Oversampling<float>>, 3> oversamplers;
     NoiseGate gate;

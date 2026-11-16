@@ -44,6 +44,7 @@ public:
         lastDryFile = dryFile;
         rate = sampleRate;
         samplesWritten.store (0);
+        samplesDropped.store (0);
 
         const juce::SpinLock::ScopedLockType lock (writerLock);
         wet = std::move (wetWriter);
@@ -71,6 +72,9 @@ public:
 
     bool isRecording() const noexcept { return active.load (std::memory_order_relaxed); }
     double getSecondsRecorded() const noexcept { return rate > 0.0 ? (double) samplesWritten.load() / rate : 0.0; }
+    /** Segundos que no se pudieron grabar en la última toma porque el disco no dio abasto. */
+    double getSecondsDropped() const noexcept { return rate > 0.0 ? (double) samplesDropped.load() / rate : 0.0; }
+    double getSampleRate() const noexcept { return rate; }
     juce::File getLastTake() const { return lastWetFile; }
     juce::File getLastDirectTake() const { return lastDryFile; }
 
@@ -87,9 +91,17 @@ public:
 
         const float* stereo[] { left, right };
         const float* mono[] { direct };
-        wet->write (stereo, numSamples);
-        dry->write (mono, numSamples);
-        samplesWritten.fetch_add (numSamples, std::memory_order_relaxed);
+        // Los dos archivos avanzan juntos o no avanza ninguno: así no se desalinean si el disco se atasca
+        if (wet->write (stereo, numSamples))
+        {
+            if (dry->write (mono, numSamples))
+            {
+                samplesWritten.fetch_add (numSamples, std::memory_order_relaxed);
+                return;
+            }
+        }
+
+        samplesDropped.fetch_add (numSamples, std::memory_order_relaxed);
     }
 
 private:
@@ -116,7 +128,7 @@ private:
     juce::SpinLock writerLock;
     std::unique_ptr<juce::AudioFormatWriter::ThreadedWriter> wet, dry;
     std::atomic<bool> active { false };
-    std::atomic<juce::int64> samplesWritten { 0 };
+    std::atomic<juce::int64> samplesWritten { 0 }, samplesDropped { 0 };
     double rate = 0.0;
     juce::File lastWetFile, lastDryFile;
 };

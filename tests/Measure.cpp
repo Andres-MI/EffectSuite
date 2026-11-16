@@ -783,6 +783,50 @@ void testNeural()
                "la captura suena igual a 44,1 y 96 kHz que a 48 kHz (nivel y armónicos)");
     }
 
+    // Apagar y reencender el ampli con una captura no hace sonar la última nota
+    {
+        fx::GuitarChain ghost;
+        ghost.prepare (fs, 64);
+        ghost.loadNeuralModel (path);
+        auto q = p;
+        auto loud = sine (220.0, fs, 0.3, 48000);
+        runChain (ghost, loud, q);
+        q.ampOn = false;
+        std::vector<float> off (48000, 0.0f);
+        runChain (ghost, off, q);
+        q.ampOn = true;
+        std::vector<float> back (48000, 0.0f);
+        runChain (ghost, back, q);
+        double residue = 0.0;
+        for (float v : back) residue = std::max (residue, (double) std::abs (v));
+        // Referencia: lo que saca la misma captura recién cargada con silencio (su ruido de reposo)
+        fx::GuitarChain idle;
+        idle.prepare (fs, 64);
+        idle.loadNeuralModel (path);
+        std::vector<float> quiet (48000, 0.0f);
+        runChain (idle, quiet, p);
+        double floor = 0.0;
+        for (size_t i = 24000; i < quiet.size(); ++i) floor = std::max (floor, (double) std::abs (quiet[i]));
+
+        std::printf ("   ampli con captura apagado y reencendido en silencio: residuo %.1f dBFS (ruido de reposo de la captura: %.1f dBFS)\n",
+                     dB (residue), dB (floor));
+        check (residue < 1.5 * floor + 1e-4, "al reencender el ampli la captura no suelta la nota anterior (solo su ruido de reposo)");
+    }
+
+    // Un archivo con una frecuencia de muestreo disparatada se rechaza en lugar de tumbar la aplicación
+    {
+        const juce::File original { juce::String (path) };
+        const auto broken = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("effectsuite_rate_test.nam");
+        auto text = original.loadFileAsString();
+        text = text.replaceFirstOccurrenceOf ("{", "{\"sample_rate\": 1000000000.0, ");
+        broken.replaceWithText (text);
+        fx::GuitarChain guarded;
+        guarded.prepare (fs, 64);
+        const auto result = guarded.loadNeuralModel (broken.getFullPathName().toStdString());
+        check (! result.ok && ! guarded.hasNeuralModel(), "una captura con frecuencia de muestreo absurda se rechaza");
+        broken.deleteFile();
+    }
+
     // Al quitarla vuelve el ampli modelado
     chain.clearNeuralModel();
     auto z = sine (220.0, fs, 0.2, 96000);

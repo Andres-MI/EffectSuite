@@ -78,6 +78,10 @@ public:
     juce::StringArray getBoardRow (bool afterAmp) const;
     /** Mueve un pedal colocado a la posición newIndex dentro de su fila (0 = el primero). Hilo de mensajes. */
     void movePedal (const juce::String& pedalId, int newIndex);
+    /** Ancho de la ventana elegido por el usuario (0 si no hay ninguno guardado). Se guarda con el estado. */
+    int getEditorWidth() const;
+    void setEditorWidth (int width);
+
     /** Cambia cada vez que la pedalera cambia (también al cargar un estado): el editor lo consulta en su temporizador. */
     int getBoardRevision() const noexcept { return boardRevision.load(); }
 
@@ -91,6 +95,8 @@ public:
     void stopRecording();
     bool isRecording() const noexcept { return recorder.isRecording(); }
     double getRecordedSeconds() const noexcept { return recorder.getSecondsRecorded(); }
+    /** Segundos perdidos en la última toma porque el disco no pudo seguir el ritmo (0 si salió entera). */
+    double getRecordingDropoutSeconds() const noexcept { return recorder.getSecondsDropped(); }
     /** Archivo del sonido procesado de la última toma (puede no existir si aún no se ha grabado nada). */
     juce::File getLastTake() const { return recorder.getLastTake(); }
     juce::File getLastDirectTake() const { return recorder.getLastDirectTake(); }
@@ -135,6 +141,10 @@ private:
     juce::StringArray readBoard() const;
     void writeBoard (const juce::StringArray&);
     std::atomic<int> boardRevision { 0 };
+    juce::uint32 lastOnMask = 0;
+
+    /** Protege el árbol de estado y las rutas de archivos: el host puede pedir el estado desde otro hilo. */
+    juce::CriticalSection stateLock;
     void timerCallback() override;
     fx::ChainParams readParams() const;
 

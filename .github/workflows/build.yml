@@ -92,7 +92,9 @@ jobs:
           cp -R build/EffectSuite_artefacts/Release/AU/EffectSuite.component dist/EffectSuite-sin-instalador/
           for bundle in dist/EffectSuite-sin-instalador/*; do codesign --force --deep --sign - "$bundle"; done
           cp docs/MANUAL.md dist/EffectSuite-sin-instalador/Manual.md
-          lipo -archs dist/EffectSuite-sin-instalador/EffectSuite.app/Contents/MacOS/EffectSuite
+          archs=$(lipo -archs dist/EffectSuite-sin-instalador/EffectSuite.app/Contents/MacOS/EffectSuite)
+          echo "$archs"
+          [[ "$archs" == *x86_64* && "$archs" == *arm64* ]]
       - name: Crear el instalador
         run: |
           version=$(sed -n 's/^project(EffectSuite VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
@@ -104,6 +106,7 @@ jobs:
           pkgbuild --analyze --root pkgroot components.plist
           for i in 0 1 2 3 4 5; do plutil -replace "$i.BundleIsRelocatable" -bool NO components.plist 2>/dev/null || break; done
           plutil -p components.plist
+          if plutil -p components.plist | grep -q '"BundleIsRelocatable" => \(1\|true\)'; then echo "El paquete sigue siendo reubicable"; exit 1; fi
           pkgbuild --root pkgroot --component-plist components.plist --identifier com.effectsuite.installer --version "$version" --install-location / dist/EffectSuite.pkg
           pkgutil --payload-files dist/EffectSuite.pkg | head -20
           ditto -c -k dist EffectSuite-macOS.zip
