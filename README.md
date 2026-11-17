@@ -31,6 +31,8 @@ Funciona como aplicación independiente y como plugin (VST3 en Windows y Mac, AU
 
 Los modelos "Bass" de los pedales conservan los graves limpios y solo saturan el resto, para que el bajo no pierda cuerpo.
 
+El ampli tiene dos motores de válvulas, que se eligen en el cabezal. **Circuito** calcula cada etapa de previo desde el circuito de un 12AX7 (ecuación de Koren, con el cátodo y el condensador de acoplo cargándose con la señal) y una etapa de potencia cuya respuesta depende de la impedancia del altavoz y de la realimentación. **Clásico** usa curvas de saturación genéricas y se conserva para comparar.
+
 Orden de la señal: pedales de antes del ampli → amplificador → pantalla → pedales de después del ampli. Dentro de cada tramo los pedales se pueden añadir, quitar y reordenar. Antes del ampli van puerta, wah, compresor, octavador, phaser, overdrive, distorsión y fuzz; después, ecualizador, flanger, chorus, tremolo, delay y reverb.
 
 ## Presets

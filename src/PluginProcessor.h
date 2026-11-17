@@ -202,7 +202,7 @@ private:
     } params {};
 
     std::atomic<float>* eqBandParams[fx::Equalizer::numBands] {};
-    std::atomic<float> *delayModelParam = nullptr, *reverbModelParam = nullptr, *looperOnParam = nullptr, *looperLevelParam = nullptr;
+    std::atomic<float> *ampEngineParam = nullptr, *delayModelParam = nullptr, *reverbModelParam = nullptr, *looperOnParam = nullptr, *looperLevelParam = nullptr;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EffectSuiteProcessor)
 };

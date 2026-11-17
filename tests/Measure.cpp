@@ -429,6 +429,39 @@ void testLevels()
         }
 
     check (ok, "todos los modelos salen entre -30 y 0 dBFS (sin saturar la salida)");
+
+    // El motor de circuito tiene que comportarse como una válvula: en limpio domina el 2.º armónico
+    // (asimetría del triodo) y la distorsión crece de forma gradual con la ganancia, no de golpe
+    {
+        const int order = 15, n = 1 << order, bin = 150;
+        double second[2] {}, third[2] {}, thdByGain[2][3] {};
+
+        for (int engine = 0; engine < 2; ++engine)
+        {
+            int g = 0;
+            for (float gain : { 0.3f, 0.5f, 0.7f })
+            {
+                fx::GuitarChain chain;
+                chain.prepare (fs, 64);
+                fx::ChainParams p;
+                p.gateOn = false; p.cabOn = false; p.ampModel = 0; p.ampGain = gain; p.ampEngine = engine;
+                auto x = sine (bin * fs / n, fs, 0.1, (size_t) (2 * n));
+                runChain (chain, x, p);
+                const auto spec = powerSpectrum (x.data() + n, order);
+                thdByGain[engine][g++] = thdOf (spec, bin);
+                if (gain == 0.3f)
+                {
+                    second[engine] = 10.0 * std::log10 (spec[(size_t) (2 * bin)] / spec[(size_t) bin]);
+                    third[engine]  = 10.0 * std::log10 (spec[(size_t) (3 * bin)] / spec[(size_t) bin]);
+                }
+            }
+        }
+
+        std::printf ("   Clean American en limpio: circuito 2.º armónico %.1f dB, 3.º %.1f dB; clásico 2.º %.1f dB, 3.º %.1f dB\n",
+                     second[0], third[0], second[1], third[1]);
+        check (second[0] > third[0] + 6.0, "motor de circuito: en limpio domina el 2.º armónico, como en una válvula");
+        check (thdByGain[0][0] < thdByGain[0][1] && thdByGain[0][1] < thdByGain[0][2], "motor de circuito: la distorsión crece de forma gradual con la ganancia");
+    }
 }
 
 //==============================================================================
@@ -1063,21 +1096,24 @@ void testRobustness()
 
     // Niveles: parecidos entre amplis, nunca por encima de 0 dBFS y sin componente continua
     {
-        double lo = 1e9, hi = -1e9, maxPeak = 0.0, maxDc = 0.0;
+        double maxPeak = 0.0, maxDc = 0.0, spread[2] {};
+
+        for (int engine = 0; engine < 2; ++engine)
+        {
+        double lo = 1e9, hi = -1e9;
         for (int model = 0; model < fx::voicings::count; ++model)
         {
             fx::GuitarChain chain;
             chain.prepare (fs, 64);
             fx::ChainParams p;
             const bool bass = fx::voicings::all[model]->bass;
-            p.gateOn = false; p.ampModel = model; p.cabModel = bass ? 3 : 0;
+            p.gateOn = false; p.ampModel = model; p.cabModel = bass ? 3 : 0; p.ampEngine = engine;
             auto x = syntheticRiffForLevels (fs, bass ? 0.5 : 1.0);
             runChain (chain, x, p);
             double sum = 0.0;
             for (float v : x) sum += (double) v * v;
             const double rms = dB (std::sqrt (sum / (double) x.size()));
             lo = std::min (lo, rms); hi = std::max (hi, rms);
-            std::printf ("      %-15s %6.1f dBFS\n", fx::voicings::all[model]->name, rms);
 
             fx::GuitarChain loud;
             loud.prepare (fs, 64);
@@ -1086,6 +1122,10 @@ void testRobustness()
             runChain (loud, y, p);
             for (float v : y) maxPeak = std::max (maxPeak, (double) std::abs (v));
         }
+        spread[engine] = hi - lo;
+        std::printf ("   motor %s: nivel RMS entre los %d amplis con un riff: de %.1f a %.1f dBFS (%.1f dB de diferencia)\n", engine == 0 ? "de circuito" : "clásico", fx::voicings::count, lo, hi, hi - lo);
+        }
+
         for (int which = 0; which < fx::overdrives::count + fx::fuzzes::count; ++which)
         {
             fx::GuitarChain chain;
@@ -1099,9 +1139,8 @@ void testRobustness()
             for (size_t i = 48000; i < x.size(); ++i) mean += x[i];
             maxDc = std::max (maxDc, std::abs (mean / 48000.0));
         }
-        std::printf ("   nivel RMS entre los %d amplis con un riff: de %.1f a %.1f dBFS (%.1f dB de diferencia)\n", fx::voicings::count, lo, hi, hi - lo);
         std::printf ("   pico con todo al máximo: %.2f dBFS; continua máxima con overdrive o fuzz sin ampli: %.5f\n", dB (maxPeak), maxDc);
-        check (hi - lo < 6.0, "los amplis salen a niveles parecidos (menos de 6 dB entre el más flojo y el más fuerte)");
+        check (spread[0] < 3.0 && spread[1] < 3.0, "los amplis salen a niveles parecidos con los dos motores (menos de 3 dB entre el más flojo y el más fuerte)");
         check (maxPeak <= 1.0, "con todo al máximo la salida no pasa de 0 dBFS");
         check (maxDc < 0.002, "los pedales no dejan componente continua en la salida");
     }
@@ -1211,6 +1250,22 @@ void renderDemos (const juce::File& dir)
     { auto p = base (0, 0.4f); p.phaserOn = true; demos.push_back ({ "14_clean_phaser.wav", p }); }
     { auto p = base (1, 0.55f); p.flangerOn = true; demos.push_back ({ "15_crunch_flanger.wav", p }); }
     { auto p = base (0, 0.45f); p.tremOn = true; p.reverbOn = true; demos.push_back ({ "16_clean_tremolo_reverb.wav", p }); }
+
+    // Comparación de motores de válvulas: mismo ampli y ajustes, cambia solo el motor
+    for (int engine = 0; engine < 2; ++engine)
+    {
+        static const char* names[2][4] { { "20_circuito_clean_american.wav", "21_circuito_plexi.wav", "22_circuito_british_crunch.wav", "23_circuito_rectified.wav" },
+                                         { "20_clasico_clean_american.wav", "21_clasico_plexi.wav", "22_clasico_british_crunch.wav", "23_clasico_rectified.wav" } };
+        const int models[4] { 0, 9, 1, 12 };
+        const float gains[4] { 0.55f, 0.6f, 0.6f, 0.6f };
+
+        for (int i = 0; i < 4; ++i)
+        {
+            auto p = base (models[i], gains[i]);
+            p.ampEngine = engine;
+            demos.push_back ({ names[engine][i], p });
+        }
+    }
 
     // Bajo: el mismo riff una octava más grave
     const auto bassDry = syntheticRiff (fs, 0.5);

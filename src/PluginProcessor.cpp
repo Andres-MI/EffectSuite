@@ -78,6 +78,7 @@ APVTS::ParameterLayout EffectSuiteProcessor::createLayout()
     knob ("ampPresence", "Amp Presence", 0.5f);
     knob ("ampMaster", "Amp Master", 0.5f);
 
+    layout.add (std::make_unique<Choice> (id ("ampEngine"), "Amp Engine", juce::StringArray { "Circuito", juce::String::fromUTF8 ("Clásico") }, 0));
     layout.add (std::make_unique<Bool> (id ("cabOn"), "Cabinet On", true));
     layout.add (std::make_unique<Choice> (id ("cabModel"), "Cabinet Model",
                                           juce::StringArray (fx::GuitarChain::cabNames, fx::GuitarChain::numCabs), 0));
@@ -162,6 +163,7 @@ EffectSuiteProcessor::EffectSuiteProcessor()
     for (auto* name : { "eq100", "eq200", "eq400", "eq800", "eq1k6", "eq3k2", "eq6k4" })
         eqBandParams[band++] = ref (name);
 
+    ampEngineParam = ref ("ampEngine");
     delayModelParam = ref ("delayModel");
     reverbModelParam = ref ("reverbModel");
     looperOnParam = ref ("looperOn");
@@ -229,6 +231,7 @@ fx::ChainParams EffectSuiteProcessor::readParams() const
     for (int i = 0; i < fx::Equalizer::numBands; ++i)
         p.eqBands[i] = eqBandParams[i]->load();
 
+    p.ampEngine       = (int) ampEngineParam->load();
     p.delayModel      = (int) delayModelParam->load();
     p.reverbModel     = (int) reverbModelParam->load();
     p.looperOn        = looperOnParam->load() > 0.5f;
@@ -726,7 +729,7 @@ void EffectSuiteProcessor::setStateInformation (const void* data, int sizeInByte
 namespace
 {
     /** Ajustes del equipo, que un preset no debe cambiar. */
-    const char* const rigSettings[] { "inputGain", "inputMode", "outputLevel", "quality", "tunerMute", "metroOn", "metroBpm", "metroLevel" };
+    const char* const rigSettings[] { "inputGain", "inputMode", "outputLevel", "quality", "tunerMute", "metroOn", "metroBpm", "metroLevel", "ampEngine" };
 
     bool isRigSetting (const juce::String& id)
     {
@@ -813,7 +816,7 @@ namespace
             { "Guitarra: Limpio cristalino", "comp,chorus,reverb",
               { { "ampModel", 0 }, { "ampGain", 0.50f }, { "ampMaster", 0.65f }, { "ampTreble", 0.60f }, { "cabModel", 1 }, { "compSustain", 0.40f }, { "chorusMix", 0.45f }, { "reverbMix", 0.25f } } },
             { "Guitarra: Blues con cuerpo", "od,reverb",
-              { { "ampModel", 3 }, { "ampGain", 0.50f }, { "ampMaster", 0.31f }, { "cabModel", 2 }, { "odModel", 1 }, { "odDrive", 0.45f }, { "odLevel", 0.60f }, { "reverbMix", 0.18f } } },
+              { { "ampModel", 3 }, { "ampGain", 0.50f }, { "ampMaster", 0.27f }, { "cabModel", 2 }, { "odModel", 1 }, { "odDrive", 0.45f }, { "odLevel", 0.60f }, { "reverbMix", 0.18f } } },
             { "Guitarra: Brillo clase A", "trem,reverb",
               { { "ampModel", 4 }, { "ampGain", 0.55f }, { "ampMaster", 0.41f }, { "cabModel", 1 }, { "tremRate", 0.45f }, { "tremDepth", 0.45f }, { "reverbMix", 0.22f } } },
             { "Guitarra: Crunch británico", "gate",

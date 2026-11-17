@@ -1,7 +1,9 @@
 #pragma once
 #include "OnePole.h"
+#include "PowerStage.h"
 #include "Saturator.h"
 #include "ToneStack.h"
+#include "Triode.h"
 
 namespace fx
 {
@@ -136,9 +138,22 @@ namespace voicings
                                                &plexi, &thickCrunch, &jazzClean, &rectified, &britClean,
                                                &bassStudio, &bassDirect };
     inline constexpr int count = 16;
+
+    // Solo para el motor de circuito, en el mismo orden que all[].
+    // Realimentación negativa de la etapa de potencia: 0 = ninguna (muy coloreado), 1 = mucha (plano).
+    inline constexpr double powerFeedback[count] { 0.9, 0.5, 0.6, 0.3, 0.0, 0.5, 0.7, 1.0, 0.5,
+                                                   0.5, 0.2, 1.0, 0.3, 0.8, 0.4, 1.0 };
+    // Ajuste de nivel para que todos los amplis salgan al mismo volumen con el motor de circuito.
+    inline constexpr double circuitTrim[count] { 0.861, 0.832, 0.841, 0.822, 0.851, 0.832, 0.881, 0.933, 0.881,
+                                                 0.832, 0.841, 0.871, 0.851, 0.871, 0.955, 0.861 };
 }
 
-/** Amplificador de válvulas: previo multietapa, control de tonos de circuito y etapa de potencia con sag. */
+/** Amplificador de válvulas: previo multietapa, control de tonos de circuito y etapa de potencia con sag.
+
+    Tiene dos motores. "Circuito" calcula cada etapa de previo desde el circuito de un 12AX7 y
+    una etapa de potencia que interactúa con el altavoz. "Clásico" usa curvas de saturación
+    genéricas; se conserva para poder comparar.
+*/
 class Amp
 {
 public:
@@ -150,6 +165,8 @@ public:
         sagAttack  = 1.0 - std::exp (-1.0 / (0.005 * fs));
         sagRelease = 1.0 - std::exp (-1.0 / (0.150 * fs));
         presenceHp.setCutoff (2500.0, fs);
+        for (auto& stage : triode) stage.prepare (fs);
+        power.prepare (fs);
         toneStack.prepare (fs);
         applyVoicing();
         reset();
@@ -164,6 +181,8 @@ public:
         for (int i = 0; i < 4; ++i) { coupling[i].reset(); miller[i].reset(); shaper[i].reset(); }
 
         powerShaper.reset();
+        for (auto& stage : triode) stage.reset();
+        power.reset();
 
         sagEnv = 0.0;
         gainPot.snap (gainPot.target);
@@ -178,13 +197,25 @@ public:
             return;
 
         voicing = voicings::all[index];
+        voicingIndex = index;
         applyVoicing();
+        reset();
+    }
+
+    /** 0 = circuito, 1 = clásico. */
+    void setEngine (int newEngine) noexcept
+    {
+        if (newEngine == engine)
+            return;
+
+        engine = newEngine;
         reset();
     }
 
     /** Controles de 0 a 1. */
     void setControls (double gain, double bass, double mid, double treble, double presence, double masterPos) noexcept
     {
+        power.setPresence (0.8 * presence);
         gainPot.target = voicing->gainPotMin * std::pow (1.0 / voicing->gainPotMin, gain);
         master.target = 2.0 * masterPos * masterPos;
         presenceAmount = 1.5 * presence;
@@ -195,6 +226,25 @@ public:
     {
         const auto& v = *voicing;
         x = inputHp.hp (x);
+
+        if (engine == 0)
+        {
+            for (int s = 0; s < v.numStages; ++s)
+            {
+                if (s == 1)
+                    x *= gainPot.next();
+
+                x = triode[s].process (x * v.stageGain[s], s > 0);
+                x = miller[s].lp (coupling[s].hp (x));
+
+                if (s == v.toneStackAfter)
+                    x = toneStack.process (x) * v.toneStackMakeup;
+            }
+
+            x *= master.next() * v.powerDrive;
+            x += 0.5 * presenceAmount * presenceHp.hp (x);
+            return power.process (x) * v.outputTrim * voicings::circuitTrim[voicingIndex];
+        }
 
         for (int s = 0; s < v.numStages; ++s)
         {
@@ -234,12 +284,17 @@ private:
             biasTanh[s] = std::tanh (v.stageBias[s]);
             biasNorm[s] = 1.0 / (1.0 - biasTanh[s] * biasTanh[s]);     // ganancia de pequeña señal unitaria
         }
+
+        power.setCharacter (voicings::powerFeedback[voicingIndex], v.sag, v.bass);
     }
 
     const AmpVoicing* voicing = &voicings::cleanAmerican;
     double fs = 48000.0;
     OnePole inputHp, presenceHp, coupling[4], miller[4];
     Saturator shaper[4], powerShaper;
+    TriodeStage triode[4];
+    PowerStage power;
+    int engine = 0, voicingIndex = 0;
     double biasNorm[4] { 1, 1, 1, 1 }, biasTanh[4] { 0, 0, 0, 0 };
     ToneStack toneStack;
     Smoothed gainPot, master;

@@ -41,6 +41,7 @@ struct ChainParams
     float fuzzAmount = 0.6f, fuzzTone = 0.5f, fuzzLevel = 0.5f;
     bool  ampOn = true;
     int   ampModel = 0;
+    int   ampEngine = 0;        // 0 = circuito, 1 = clásico
     float ampGain = 0.5f, ampBass = 0.5f, ampMid = 0.5f, ampTreble = 0.5f, ampPresence = 0.5f, ampMaster = 0.5f;
     bool  cabOn = true;
     int   cabModel = 0;
@@ -254,7 +255,7 @@ public:
         const Discrete wanted { oversamplerIndex (p.quality), p.odModel, p.distModel, p.fuzzModel, p.ampModel,
                                 juce::jlimit (0, numCabs - 1, p.cabModel), p.wahMode,
                                 neural.isLoaded(), userIrLoaded.load (std::memory_order_relaxed),
-                                p.delayModel, p.reverbModel,
+                                p.delayModel, p.reverbModel, p.ampEngine,
                                 validOrder (p.preOrder), validOrder (p.postOrder) };
 
         if (firstBlock)
@@ -286,6 +287,7 @@ public:
         overdrive.setVoicing (applied.odModel);
         distortion.setVoicing (applied.distModel);
         fuzz.setVoicing (applied.fuzzModel);
+        amp.setEngine (applied.ampEngine);
         amp.setVoicing (applied.ampModel);
 
         wah.setControls (applied.wahMode, p.wahPosition, p.wahQ);
@@ -590,7 +592,7 @@ private:
     {
         int quality = 1, odModel = 0, distModel = 0, fuzzModel = 0, ampModel = 0, cabModel = 0, wahMode = 0;
         bool neural = false, userIr = false;
-        int delayModel = 0, reverbModel = 0;
+        int delayModel = 0, reverbModel = 0, ampEngine = 0;
         std::array<juce::uint8, 8> preOrder  { 0, 1, 2, 3, 4, 5, 6, 7 };
         std::array<juce::uint8, 6> postOrder { 0, 1, 2, 3, 4, 5 };
         bool operator== (const Discrete&) const = default;

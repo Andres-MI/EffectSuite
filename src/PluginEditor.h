@@ -183,12 +183,12 @@ private:
         bool lastOn = false;
         juce::String lastCaptureName, lastCaptureNote;
         std::vector<std::unique_ptr<Knob>> knobs;
-        juce::ComboBox model;
+        juce::ComboBox model, engine;
         juce::Label captureName;
         juce::TextButton loadCapture { juce::CharPointer_UTF8 ("Cargar captura\xe2\x80\xa6") }, clearCapture { "Quitar" };
         std::unique_ptr<juce::FileChooser> chooser;
         PowerSwitch power;
-        std::unique_ptr<ComboAttachment> modelAttachment;
+        std::unique_ptr<ComboAttachment> modelAttachment, engineAttachment;
         std::unique_ptr<ButtonAttachment> powerAttachment;
         juce::Rectangle<int> grilleArea, plateArea, lightArea;
     };

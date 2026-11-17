@@ -794,6 +794,12 @@ EffectSuiteEditor::AmpUnit::AmpUnit (EffectSuiteEditor& e) : editor (e)
     addAndMakeVisible (model);
     modelAttachment = std::make_unique<ComboAttachment> (editor.processor.apvts, "ampModel", model);
 
+    // Motor de válvulas: "Circuito" (nuevo) o "Clásico", para poder compararlos de oído
+    editor.fillCombo (engine, "ampEngine");
+    engine.setTooltip (juce::String::fromUTF8 ("Motor de válvulas: Circuito calcula cada válvula y la etapa de potencia con el altavoz; Clásico es el modelo anterior"));
+    addAndMakeVisible (engine);
+    engineAttachment = std::make_unique<ComboAttachment> (editor.processor.apvts, "ampEngine", engine);
+
     addAndMakeVisible (loadCapture);
     addAndMakeVisible (clearCapture);
     loadCapture.onClick = [this] { chooseCapture(); };
@@ -877,6 +883,8 @@ void EffectSuiteEditor::AmpUnit::updateCaptureState()
 
     model.setEnabled (! loaded);
     model.setAlpha (loaded ? 0.4f : 1.0f);
+    engine.setEnabled (! loaded);
+    engine.setAlpha (loaded ? 0.4f : 1.0f);
 
     // Bass, Mid, Treble and Presence do nothing with a capture; Gain and Master become input/output level
     for (size_t i = 0; i < knobs.size(); ++i)
@@ -961,6 +969,10 @@ void EffectSuiteEditor::AmpUnit::resized()
                            .removeFromRight (juce::roundToInt (330 * s))
                            .withSizeKeepingCentre (juce::roundToInt (330 * s), ctlH * 2 + gap);
     model.setBounds (strip.removeFromTop (ctlH).removeFromRight (juce::roundToInt (250 * s)));
+
+    // El selector de motor va a la izquierda del rótulo "Modelo", fuera de esa franja
+    engine.setBounds (model.getX() - juce::roundToInt (70 * s) - gap - juce::roundToInt (118 * s), model.getY(),
+                      juce::roundToInt (118 * s), ctlH);
     strip.removeFromTop (gap);
     loadCapture.setBounds (strip.removeFromLeft (juce::roundToInt (120 * s)));
     strip.removeFromLeft (gap);
